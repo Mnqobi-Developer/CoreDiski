@@ -1,6 +1,6 @@
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../../lib/supabase.ts'
-import type { ProfileFormValues, ProfileRecord } from './profileTypes.ts'
+import type { ProfileFormValues, ProfileRecord, UserRole } from './profileTypes.ts'
 
 type ProfileRow = {
   address: string | null
@@ -12,10 +12,25 @@ type ProfileRow = {
   id: string
   pending_orders: number | null
   phone: string | null
+  role?: string | null
   shipped_orders: number | null
 }
 
-const profileColumns = `
+const profileColumnsWithRole = `
+  id,
+  full_name,
+  email,
+  phone,
+  address,
+  email_preferences,
+  pending_orders,
+  shipped_orders,
+  completed_orders,
+  role,
+  created_at
+`
+
+const profileColumnsWithoutRole = `
   id,
   full_name,
   email,
@@ -28,7 +43,13 @@ const profileColumns = `
   created_at
 `
 
-const mapProfileRow = (row: ProfileRow): ProfileRecord => ({
+const getSessionRole = (session: Session): UserRole =>
+  session.user.user_metadata.role === 'admin' ? 'admin' : 'customer'
+
+const isMissingRoleColumnError = (error: { message?: string } | null) =>
+  Boolean(error?.message?.toLowerCase().includes('role'))
+
+const mapProfileRow = (row: ProfileRow, fallbackRole: UserRole): ProfileRecord => ({
   address: row.address,
   completedOrders: row.completed_orders ?? 0,
   createdAt: row.created_at,
@@ -38,45 +59,67 @@ const mapProfileRow = (row: ProfileRow): ProfileRecord => ({
   id: row.id,
   pendingOrders: row.pending_orders ?? 0,
   phone: row.phone,
+  role: row.role === 'admin' ? 'admin' : fallbackRole,
   shippedOrders: row.shipped_orders ?? 0,
 })
 
-const buildProfileSeed = (session: Session) => ({
-  email: session.user.email ?? '',
-  email_preferences: 'General updates',
-  full_name:
-    typeof session.user.user_metadata.full_name === 'string'
-      ? session.user.user_metadata.full_name.trim()
-      : '',
-  id: session.user.id,
-})
+const buildProfileSeed = (session: Session, includeRole: boolean) => {
+  const seed = {
+    email: session.user.email ?? '',
+    email_preferences: 'General updates',
+    full_name:
+      typeof session.user.user_metadata.full_name === 'string'
+        ? session.user.user_metadata.full_name.trim()
+        : '',
+    id: session.user.id,
+  }
 
-export const loadOrCreateProfile = async (session: Session) => {
-  const { data, error } = await supabase
+  if (!includeRole) {
+    return seed
+  }
+
+  return {
+    ...seed,
+    role: getSessionRole(session),
+  }
+}
+
+const selectProfile = async (session: Session, includeRole: boolean) =>
+  supabase
     .from('profiles')
-    .select(profileColumns)
+    .select(includeRole ? profileColumnsWithRole : profileColumnsWithoutRole)
     .eq('id', session.user.id)
     .maybeSingle<ProfileRow>()
+
+export const loadOrCreateProfile = async (session: Session) => {
+  const fallbackRole = getSessionRole(session)
+  let includeRole = true
+  let { data, error } = await selectProfile(session, includeRole)
+
+  if (error && isMissingRoleColumnError(error)) {
+    includeRole = false
+    ;({ data, error } = await selectProfile(session, includeRole))
+  }
 
   if (error) {
     return { data: null, error }
   }
 
   if (data) {
-    return { data: mapProfileRow(data), error: null }
+    return { data: mapProfileRow(data, fallbackRole), error: null }
   }
 
   const { data: createdProfile, error: createError } = await supabase
     .from('profiles')
-    .upsert(buildProfileSeed(session))
-    .select(profileColumns)
+    .upsert(buildProfileSeed(session, includeRole))
+    .select(includeRole ? profileColumnsWithRole : profileColumnsWithoutRole)
     .single<ProfileRow>()
 
   if (createError || !createdProfile) {
     return { data: null, error: createError }
   }
 
-  return { data: mapProfileRow(createdProfile), error: null }
+  return { data: mapProfileRow(createdProfile, fallbackRole), error: null }
 }
 
 type SaveProfilePayload = {
@@ -86,7 +129,8 @@ type SaveProfilePayload = {
 }
 
 export const saveProfile = async ({ email, form, userId }: SaveProfilePayload) => {
-  const { data, error } = await supabase
+  let includeRole = true
+  let { data, error } = await supabase
     .from('profiles')
     .update({
       address: form.address.trim() || null,
@@ -96,12 +140,28 @@ export const saveProfile = async ({ email, form, userId }: SaveProfilePayload) =
       phone: form.phone.trim() || null,
     })
     .eq('id', userId)
-    .select(profileColumns)
+    .select(profileColumnsWithRole)
     .single<ProfileRow>()
+
+  if (error && isMissingRoleColumnError(error)) {
+    includeRole = false
+    ;({ data, error } = await supabase
+      .from('profiles')
+      .update({
+        address: form.address.trim() || null,
+        email,
+        email_preferences: form.emailPreferences.trim() || 'General updates',
+        full_name: form.fullName.trim(),
+        phone: form.phone.trim() || null,
+      })
+      .eq('id', userId)
+      .select(profileColumnsWithoutRole)
+      .single<ProfileRow>())
+  }
 
   if (error || !data) {
     return { data: null, error }
   }
 
-  return { data: mapProfileRow(data), error: null }
+  return { data: mapProfileRow(data, includeRole ? 'customer' : 'customer'), error: null }
 }

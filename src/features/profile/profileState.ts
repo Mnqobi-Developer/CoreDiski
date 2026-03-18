@@ -9,6 +9,12 @@ export const createInitialProfileState = (): ProfilePageState => ({
   },
   isEditing: false,
   isLoading: false,
+  orderHistory: [],
+  orderSummary: {
+    completed: 0,
+    pending: 0,
+    shipped: 0,
+  },
   isSaving: false,
   notice: null,
   profile: null,

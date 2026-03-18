@@ -1,6 +1,7 @@
 import type { Session } from '@supabase/supabase-js'
 import { renderStorefrontShell } from '../../shared/templates/renderStorefrontShell.ts'
 import { escapeHtml } from '../../shared/utils/escapeHtml.ts'
+import type { OrderRecord } from '../orders/orderTypes.ts'
 import type { ProfilePageState } from './profileTypes.ts'
 
 type RenderProfilePageOptions = {
@@ -70,6 +71,72 @@ const renderSummaryValue = (value: string | null | undefined) => {
   return escapeHtml(value)
 }
 
+const formatOrderDate = (isoDate: string) => {
+  const date = new Date(isoDate)
+
+  if (Number.isNaN(date.getTime())) {
+    return 'Recently'
+  }
+
+  return new Intl.DateTimeFormat('en-US', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(date)
+}
+
+const formatOrderStatus = (status: OrderRecord['status']) =>
+  status.charAt(0).toUpperCase() + status.slice(1)
+
+const renderOrderHistory = (orders: OrderRecord[]) => {
+  if (!orders.length) {
+    return `
+      <div class="order-history-empty">
+        <h4>No orders yet</h4>
+        <p>Your completed checkout orders will appear here.</p>
+      </div>
+    `
+  }
+
+  return `
+    <div class="order-history-list">
+      ${orders
+        .map(
+          (order) => `
+            <article class="order-history-item">
+              <div class="order-history-top">
+                <div>
+                  <h4>Order ${escapeHtml(order.id)}</h4>
+                  <p>Placed on ${escapeHtml(formatOrderDate(order.createdAt))}</p>
+                </div>
+                <span class="order-status order-status-${order.status}">
+                  ${escapeHtml(formatOrderStatus(order.status))}
+                </span>
+              </div>
+              <div class="order-history-meta">
+                <span>${order.items.length} item${order.items.length === 1 ? '' : 's'}</span>
+                <strong>R ${order.total}</strong>
+              </div>
+              <div class="order-history-products">
+                ${order.items
+                  .map(
+                    (item) => `
+                      <div class="order-history-product">
+                        <span>${escapeHtml(item.product.name)} ${escapeHtml(item.product.seasonLabel)}</span>
+                        <span>Size ${item.size} · Qty ${item.quantity}</span>
+                      </div>
+                    `,
+                  )
+                  .join('')}
+              </div>
+            </article>
+          `,
+        )
+        .join('')}
+    </div>
+  `
+}
+
 export const renderProfilePage = ({ profileState, session }: RenderProfilePageOptions) => {
   const savedProfileName = getProfileName({ profileState, session })
   const profileEmail = getProfileEmail({ profileState, session })
@@ -93,6 +160,15 @@ export const renderProfilePage = ({ profileState, session }: RenderProfilePageOp
       : profile?.emailPreferences ?? 'General updates'
   const profileInitials = getProfileInitials(displayName)
   const memberSince = formatMemberSince(profile?.createdAt ?? session.user.created_at)
+  const isAdmin = profile?.role === 'admin'
+  const summaryCounts = {
+    completed:
+      profileState.orderHistory.length > 0 ? profileState.orderSummary.completed : (profile?.completedOrders ?? 0),
+    pending:
+      profileState.orderHistory.length > 0 ? profileState.orderSummary.pending : (profile?.pendingOrders ?? 0),
+    shipped:
+      profileState.orderHistory.length > 0 ? profileState.orderSummary.shipped : (profile?.shippedOrders ?? 0),
+  }
 
   const profileContent = `
     <div class="profile-page">
@@ -100,10 +176,11 @@ export const renderProfilePage = ({ profileState, session }: RenderProfilePageOp
         <div class="sidebar-card">
           <h2>My Account</h2>
           <nav class="sidebar-nav">
-            <button class="sidebar-link is-active" type="button">Account Overview</button>
-            <button class="sidebar-link" type="button">Order History</button>
-            <button class="sidebar-link" type="button">Wishlist</button>
-            <button class="sidebar-link" type="button">Account Settings</button>
+            <button id="profile-nav-overview" class="sidebar-link is-active" type="button">Account Overview</button>
+            <button id="profile-nav-orders" class="sidebar-link" type="button">Order History</button>
+            <button id="profile-nav-wishlist" class="sidebar-link" type="button">Wishlist</button>
+            <button id="profile-nav-settings" class="sidebar-link" type="button">Account Settings</button>
+            ${isAdmin ? '<button id="profile-nav-admin" class="sidebar-link" type="button">Admin Portal</button>' : ''}
             <button id="sidebar-logout" class="sidebar-link sidebar-link-logout" type="button">
               Log Out
             </button>
@@ -112,7 +189,7 @@ export const renderProfilePage = ({ profileState, session }: RenderProfilePageOp
       </aside>
 
       <section class="profile-content">
-        <div class="profile-heading">
+        <div id="profile-overview-section" class="profile-heading">
           <h1>My Profile</h1>
         </div>
 
@@ -143,15 +220,15 @@ export const renderProfilePage = ({ profileState, session }: RenderProfilePageOp
             <div class="summary-list">
               <div class="summary-row">
                 <span>Pending Orders</span>
-                <strong>${profile?.pendingOrders ?? 0}</strong>
+                <strong>${summaryCounts.pending}</strong>
               </div>
               <div class="summary-row">
                 <span>Shipped</span>
-                <strong>${profile?.shippedOrders ?? 0}</strong>
+                <strong>${summaryCounts.shipped}</strong>
               </div>
               <div class="summary-row">
                 <span>Completed</span>
-                <strong>${profile?.completedOrders ?? 0}</strong>
+                <strong>${summaryCounts.completed}</strong>
               </div>
             </div>
           </section>
@@ -175,7 +252,12 @@ export const renderProfilePage = ({ profileState, session }: RenderProfilePageOp
           </section>
         </div>
 
-        <section class="profile-form-card">
+        <section id="profile-orders-section" class="profile-form-card profile-orders-card">
+          <h3>Order History</h3>
+          ${renderOrderHistory(profileState.orderHistory)}
+        </section>
+
+        <section id="profile-settings-section" class="profile-form-card">
           <h3>Edit Personal Information</h3>
           <form id="profile-form" class="profile-form">
             <div class="profile-form-grid">

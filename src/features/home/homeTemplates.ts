@@ -36,7 +36,7 @@ const shieldIcon = `
 export const renderHomePage = ({ actionButton }: RenderHomePageOptions) => {
   const mainContent = `
     <section class="hero-home">
-      <img class="hero-home-logo" src="/logo Core Diski.png" alt="Core Diski crest" />
+      <img class="hero-home-logo" src="${brandLogoSrc}" alt="Core Diski crest" />
       <div class="hero-home-copy">
         <h1>Authentic Football Shirts</h1>
         <p>

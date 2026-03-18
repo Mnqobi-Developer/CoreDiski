@@ -29,7 +29,7 @@ export const renderStorefrontShell = ({
     <div class="store-shell">
       <header class="topbar">
         <div class="brand">
-          <img class="brand-logo" src="/logo Core Diski.png" alt="Core Diski logo" />
+          <img class="brand-logo" src="${brandLogoSrc}" alt="Core Diski logo" />
           <div class="brand-copy">
             <p class="brand-title">${brandTitle}</p>
             <p class="brand-subtitle">${brandSubtitle}</p>

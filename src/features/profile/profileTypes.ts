@@ -1,4 +1,7 @@
 import type { Notice } from '../../shared/types/notice.ts'
+import type { OrderRecord, OrderSummary } from '../orders/orderTypes.ts'
+
+export type UserRole = 'admin' | 'customer'
 
 export type ProfileRecord = {
   address: string | null
@@ -10,6 +13,7 @@ export type ProfileRecord = {
   id: string
   pendingOrders: number
   phone: string | null
+  role: UserRole
   shippedOrders: number
 }
 
@@ -24,6 +28,8 @@ export type ProfilePageState = {
   form: ProfileFormValues
   isEditing: boolean
   isLoading: boolean
+  orderHistory: OrderRecord[]
+  orderSummary: OrderSummary
   isSaving: boolean
   notice: Notice | null
   profile: ProfileRecord | null
