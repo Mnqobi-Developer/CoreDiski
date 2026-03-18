@@ -23,7 +23,9 @@ export const renderCheckoutPage = ({
   form,
   lines,
   notice,
+  shipping,
   subtotal,
+  total,
 }: RenderCheckoutPageOptions) => {
   const mainContent = `
     <section class="checkout-page">
@@ -61,7 +63,7 @@ export const renderCheckoutPage = ({
             <h2>Shipping Method</h2>
             <label class="checkout-method">
               <input type="checkbox" checked disabled />
-              <span>Free Shipping (3-7 business days)</span>
+              <span>Nationwide Shipping in South Africa (${formatCurrency(shipping)}, 3-7 business days)</span>
             </label>
           </section>
 
@@ -135,11 +137,11 @@ export const renderCheckoutPage = ({
             </div>
             <div class="checkout-summary-row">
               <span>Shipping:</span>
-              <strong>Free</strong>
+              <strong>${formatCurrency(shipping)}</strong>
             </div>
             <div class="checkout-summary-row checkout-summary-total">
               <span>Total:</span>
-              <strong>${formatCurrency(subtotal)}</strong>
+              <strong>${formatCurrency(total)}</strong>
             </div>
           </section>
         </aside>

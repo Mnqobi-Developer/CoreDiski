@@ -11,6 +11,7 @@ export type ProfileRecord = {
   emailPreferences: string
   fullName: string
   id: string
+  isActive: boolean
   pendingOrders: number
   phone: string | null
   role: UserRole

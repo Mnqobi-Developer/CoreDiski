@@ -9,14 +9,15 @@ const isValidOrder = (value: unknown): value is OrderRecord => {
 
   const candidate = value as Partial<OrderRecord>
 
-  return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.userId === 'string' &&
-    typeof candidate.email === 'string' &&
-    typeof candidate.createdAt === 'string' &&
-    typeof candidate.shippingAddress === 'string' &&
-    typeof candidate.total === 'number' &&
-    Array.isArray(candidate.items) &&
+    return (
+      typeof candidate.id === 'string' &&
+      typeof candidate.userId === 'string' &&
+      typeof candidate.email === 'string' &&
+      typeof candidate.createdAt === 'string' &&
+      (candidate.paymentStatus === 'awaiting_approval' || candidate.paymentStatus === 'paid') &&
+      typeof candidate.shippingAddress === 'string' &&
+      typeof candidate.total === 'number' &&
+      Array.isArray(candidate.items) &&
     (candidate.status === 'pending' ||
       candidate.status === 'shipped' ||
       candidate.status === 'completed')

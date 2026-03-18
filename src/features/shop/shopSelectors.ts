@@ -6,15 +6,19 @@ const matchesPriceRange = (price: number, range: PriceRange) => {
     return true
   }
 
-  if (range === '0-200') {
-    return price <= 200
+  if (range === '0-500') {
+    return price <= 500
   }
 
-  if (range === '201-300') {
-    return price >= 201 && price <= 300
+  if (range === '500-1000') {
+    return price >= 500 && price <= 1000
   }
 
-  return price >= 301 && price <= 500
+  if (range === '1000-2000') {
+    return price >= 1000 && price <= 2000
+  }
+
+  return price >= 2000
 }
 
 const sortItems = (items: ShopItem[], sortBy: SortOption) => {

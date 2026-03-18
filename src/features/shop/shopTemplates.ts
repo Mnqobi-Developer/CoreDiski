@@ -106,9 +106,10 @@ export const renderShopPage = ({ actionButton, filters }: RenderShopPageOptions)
           <label class="shop-select-wrap">
             <select id="shop-price-select" class="shop-select">
               <option value="all" ${filters.priceRange === 'all' ? 'selected' : ''}>All prices</option>
-              <option value="0-200" ${filters.priceRange === '0-200' ? 'selected' : ''}>R0 - R200</option>
-              <option value="201-300" ${filters.priceRange === '201-300' ? 'selected' : ''}>R201 - R300</option>
-              <option value="301-500" ${filters.priceRange === '301-500' ? 'selected' : ''}>R301 - R500</option>
+              <option value="0-500" ${filters.priceRange === '0-500' ? 'selected' : ''}>R0 - R500</option>
+              <option value="500-1000" ${filters.priceRange === '500-1000' ? 'selected' : ''}>R500 - R1000</option>
+              <option value="1000-2000" ${filters.priceRange === '1000-2000' ? 'selected' : ''}>R1000 - R2000</option>
+              <option value="2000+" ${filters.priceRange === '2000+' ? 'selected' : ''}>R2000+</option>
             </select>
           </label>
           <label class="shop-select-wrap">

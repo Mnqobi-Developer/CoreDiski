@@ -2,9 +2,20 @@ import type { Session } from '@supabase/supabase-js'
 import { isSupabaseConfigured } from '../lib/supabase.ts'
 import { getEmailRedirectTo } from '../config/site.ts'
 import { getAdminDashboardData } from '../features/admin/adminSelectors.ts'
-import { createEmptyAdminProductForm, createInitialAdminState } from '../features/admin/adminState.ts'
+import {
+  createDefaultAdminSettingsForm,
+  createEmptyAdminProductForm,
+  createInitialAdminState,
+} from '../features/admin/adminState.ts'
+import { writeAdminSettings } from '../features/admin/adminSettingsStorage.ts'
 import { renderAdminPage } from '../features/admin/adminTemplates.ts'
-import { shopCatalog, hydrateShopCatalog, buildAdminProduct, upsertShopProduct } from '../features/shop/shopCatalog.ts'
+import {
+  shopCatalog,
+  hydrateShopCatalog,
+  buildAdminProduct,
+  replaceShopCatalog,
+  upsertShopProduct,
+} from '../features/shop/shopCatalog.ts'
 import {
   getCurrentSession,
   signInWithEmail,
@@ -15,7 +26,7 @@ import {
 import { createInitialAuthState } from '../features/auth/authState.ts'
 import { renderAuthPage } from '../features/auth/authTemplates.ts'
 import type { AuthMode } from '../features/auth/authTypes.ts'
-import { getCartLineItems, getCartSubtotal } from '../features/cart/cartSelectors.ts'
+import { getCartLineItems, getCartShippingTotal, getCartSubtotal, getCartTotal } from '../features/cart/cartSelectors.ts'
 import { createInitialCartState } from '../features/cart/cartState.ts'
 import { writeCartItems } from '../features/cart/cartStorage.ts'
 import { renderCartPage } from '../features/cart/cartTemplates.ts'
@@ -24,14 +35,22 @@ import { createInitialCheckoutState } from '../features/checkout/checkoutState.t
 import { renderCheckoutPage } from '../features/checkout/checkoutTemplates.ts'
 import { renderHomePage } from '../features/home/homeTemplates.ts'
 import { getOrdersForUser, getOrderSummary } from '../features/orders/orderSelectors.ts'
+import { createOrderRecord, listOrders, updateOrderRecord } from '../features/orders/orderService.ts'
 import { createInitialOrderState } from '../features/orders/orderState.ts'
-import { writeOrders } from '../features/orders/orderStorage.ts'
+import { readOrders, writeOrders } from '../features/orders/orderStorage.ts'
 import type { OrderRecord } from '../features/orders/orderTypes.ts'
 import { createInitialProfileState } from '../features/profile/profileState.ts'
-import { loadOrCreateProfile, saveProfile } from '../features/profile/profileService.ts'
+import {
+  listProfilesForAdmin,
+  loadOrCreateProfile,
+  saveProfile,
+  updateProfileActiveStatus,
+  updateProfileRole,
+} from '../features/profile/profileService.ts'
 import { renderProfilePage } from '../features/profile/profileTemplates.ts'
 import type { ProfileRecord } from '../features/profile/profileTypes.ts'
 import { renderProductPage } from '../features/product/productTemplates.ts'
+import { listStoreProducts, upsertStoreProduct } from '../features/shop/productService.ts'
 import { createInitialShopFilters } from '../features/shop/shopState.ts'
 import { renderShopPage } from '../features/shop/shopTemplates.ts'
 import type { PriceRange, ShirtSize, ShopEra, SortOption } from '../features/shop/shopTypes.ts'
@@ -63,6 +82,8 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
   const profileState = createInitialProfileState()
   const shopFilters = createInitialShopFilters()
   const wishlistState = createInitialWishlistState()
+  let adminProfiles: ProfileRecord[] = []
+  let isLoadingAdminProfiles = false
   let session: Session | null = null
   let currentPage: AppPage = 'home'
   let currentProductId: string | null = null
@@ -83,7 +104,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         }
 
   const isAdminUser = () =>
-    profileState.profile?.role === 'admin' || session?.user.user_metadata.role === 'admin'
+    profileState.profile ? profileState.profile.role === 'admin' : session?.user.user_metadata.role === 'admin'
 
   const getSignedInLandingPage = (): AppPage => (isAdminUser() ? 'admin' : 'profile')
 
@@ -312,6 +333,116 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     profileState.orderSummary = getOrderSummary(orders)
   }
 
+  const upsertAdminProfile = (profile: ProfileRecord | null) => {
+    if (!profile) {
+      return
+    }
+
+    const existingIndex = adminProfiles.findIndex((entry) => entry.id === profile.id)
+
+    if (existingIndex >= 0) {
+      adminProfiles[existingIndex] = profile
+      return
+    }
+
+    adminProfiles = [profile, ...adminProfiles]
+  }
+
+  const loadAdminProfiles = async () => {
+    if (!session || !isAdminUser() || isLoadingAdminProfiles) {
+      return
+    }
+
+    isLoadingAdminProfiles = true
+
+    const { data, error } = await listProfilesForAdmin()
+
+    isLoadingAdminProfiles = false
+
+    if (error) {
+      adminState.notice = {
+        tone: 'error',
+        message:
+          'Unable to load all customer accounts. Run the admin customer SQL permissions if this persists.',
+      }
+      upsertAdminProfile(profileState.profile)
+      render()
+      return
+    }
+
+    adminProfiles = data
+    upsertAdminProfile(profileState.profile)
+
+    if (currentPage === 'admin') {
+      render()
+    }
+  }
+
+  const loadProductsFromDatabase = async () => {
+    if (!isSupabaseConfigured) {
+      return
+    }
+
+    const { data, error } = await listStoreProducts()
+
+    if (error) {
+      if (currentPage === 'admin') {
+        adminState.notice = {
+          tone: 'error',
+          message:
+            error.message ||
+            'Unable to load products from Supabase. Run the products/orders SQL script if this persists.',
+        }
+        render()
+      }
+      return
+    }
+
+    if (!data.length) {
+      return
+    }
+
+    replaceShopCatalog(data)
+    syncCatalogWishlistFlags()
+    render()
+  }
+
+  const loadOrdersFromDatabase = async (activeSession: Session) => {
+    if (!isSupabaseConfigured) {
+      return
+    }
+
+    const { data, error } = await listOrders()
+
+    if (error) {
+      const message =
+        error.message ||
+        'Unable to load orders from Supabase. Run the products/orders SQL script if this persists.'
+
+      if (currentPage === 'admin') {
+        adminState.notice = {
+          tone: 'error',
+          message,
+        }
+      } else {
+        profileState.notice = {
+          tone: 'error',
+          message,
+        }
+      }
+      render()
+      return
+    }
+
+    orderState.items = data
+    persistOrders()
+    syncProfileOrders(activeSession.user.id)
+
+    if (currentPage === 'admin' || currentPage === 'profile') {
+      render()
+    }
+  }
+
   const getPreferredSize = (productId: string): ShirtSize | null => {
     const product = shopCatalog.find((item) => item.id === productId)
 
@@ -350,9 +481,18 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     const currentProduct = currentProductId
       ? shopCatalog.find((item) => item.id === currentProductId) ?? null
       : null
-    const adminData = getAdminDashboardData(shopCatalog, orderState.items, adminSearchTerm)
+    const adminData = getAdminDashboardData(
+      shopCatalog,
+      orderState.items,
+      adminProfiles,
+      adminSearchTerm,
+      adminState.orderFilter,
+      adminState.customerFilter,
+    )
     const cartLines = getCartLineItems(cartState.items)
+    const cartShipping = getCartShippingTotal(cartState.items)
     const cartSubtotal = getCartSubtotal(cartState.items)
+    const cartTotal = getCartTotal(cartState.items)
     const wishlistLines = getWishlistLineItems(wishlistState.items)
     const requiresAuth =
       currentPage === 'admin' ||
@@ -377,7 +517,9 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         actionButton: getShellActionButton(),
         lines: cartLines,
         notice: cartState.notice,
+        shipping: cartShipping,
         subtotal: cartSubtotal,
+        total: cartTotal,
       })
     } else if (currentPage === 'checkout' && session) {
       syncCheckoutForm(profileState.profile)
@@ -387,7 +529,9 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         form: checkoutState.form,
         lines: cartLines,
         notice: checkoutState.notice,
+        shipping: cartShipping,
         subtotal: cartSubtotal,
+        total: cartTotal,
       })
     } else if (currentPage === 'wishlist' && session) {
       appRoot.innerHTML = renderWishlistPage({
@@ -419,8 +563,11 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         session,
       })
     } else {
+      const featuredProducts = shopCatalog.filter((item) => item.isFeatured)
+
       appRoot.innerHTML = renderHomePage({
         actionButton: getShellActionButton(),
+        featuredProducts: (featuredProducts.length ? featuredProducts : shopCatalog).slice(0, 5),
       })
     }
 
@@ -458,7 +605,17 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
       return
     }
 
+    if (!data.isActive) {
+      await signOutCurrentUser()
+      handleSignedOutState({
+        tone: 'error',
+        message: 'This account has been removed. Contact support if you believe this is a mistake.',
+      })
+      return
+    }
+
     profileState.profile = data
+    upsertAdminProfile(data)
     syncProfileForm(data)
     syncCheckoutForm(data)
     render()
@@ -474,6 +631,10 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     syncProfileOrders(nextSession.user.id)
 
     if (profileState.profile?.id === nextSession.user.id) {
+      if (profileState.profile.role === 'admin') {
+        await loadAdminProfiles()
+      }
+      await loadOrdersFromDatabase(nextSession)
       if (options?.showProfile) {
         currentPage = 'profile'
       }
@@ -482,6 +643,13 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     }
 
     await loadProfile(nextSession)
+
+    if (profileState.profile?.role === 'admin') {
+      await loadAdminProfiles()
+    }
+
+    await loadOrdersFromDatabase(nextSession)
+
     if (options?.showProfile) {
       currentPage = 'profile'
     }
@@ -496,7 +664,11 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     authState.showPassword = false
     adminSearchTerm = ''
     adminState.activeView = 'dashboard'
+    adminState.customerFilter = 'all'
+    adminState.orderFilter = 'all'
     adminState.notice = null
+    adminProfiles = []
+    orderState.items = readOrders()
     resetAdminProductForm()
     resetProfileState()
     currentPage = notice ? 'auth' : 'home'
@@ -683,6 +855,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     }
 
     profileState.profile = data
+    upsertAdminProfile(data)
     syncProfileForm(data)
     syncCheckoutForm(data)
     profileState.isEditing = false
@@ -859,11 +1032,15 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
   const bindHomeUi = () => {
     const homeNavLink = appRoot.querySelector<HTMLAnchorElement>('a[href="#home"]')
     const shopNavLink = appRoot.querySelector<HTMLAnchorElement>('a[href="#shop"]')
+    const wishlistNavLink = appRoot.querySelector<HTMLAnchorElement>('a[href="#wishlist"]')
     const headerAuthAction = appRoot.querySelector<HTMLButtonElement>('#header-auth-action')
     const headerProfileAction = appRoot.querySelector<HTMLButtonElement>('#header-profile-action')
     const searchForm = appRoot.querySelector<HTMLFormElement>('#home-search-form')
     const searchInput = appRoot.querySelector<HTMLInputElement>('#home-search-input')
     const popularLinks = appRoot.querySelectorAll<HTMLButtonElement>('[data-search]')
+    const productLinks = appRoot.querySelectorAll<HTMLElement>('[data-product-id]')
+    const wishlistButtons = appRoot.querySelectorAll<HTMLButtonElement>('[data-wishlist-toggle]')
+    const aboutCta = appRoot.querySelector<HTMLButtonElement>('#home-about-cta')
 
     homeNavLink?.addEventListener('click', (event) => {
       event.preventDefault()
@@ -875,6 +1052,11 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
       navigateTo('shop')
     })
 
+    wishlistNavLink?.addEventListener('click', (event) => {
+      event.preventDefault()
+      navigateTo('wishlist')
+    })
+
     headerAuthAction?.addEventListener('click', () => {
       handleModeSwitch('sign-in')
       navigateTo('auth')
@@ -882,6 +1064,50 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
 
     headerProfileAction?.addEventListener('click', () => {
       navigateTo('profile')
+    })
+
+    productLinks.forEach((element) => {
+      element.addEventListener('click', (event) => {
+        event.preventDefault()
+
+        const productId = element.dataset.productId
+
+        if (!productId) {
+          return
+        }
+
+        navigateTo('product', productId)
+      })
+    })
+
+    wishlistButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const productId = button.dataset.wishlistToggle
+
+        if (!productId) {
+          return
+        }
+
+        if (!session) {
+          handleModeSwitch('sign-in')
+          setAuthNotice({ tone: 'info', message: 'Sign in to save items to your wishlist.' })
+          navigateTo('auth')
+          return
+        }
+
+        const size = getPreferredSize(productId)
+
+        if (!size) {
+          return
+        }
+
+        toggleWishlistItem({
+          productId,
+          size,
+        })
+        wishlistState.notice = null
+        render()
+      })
     })
 
     popularLinks.forEach((button) => {
@@ -904,6 +1130,10 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
       }
 
       applyShopSearch(searchInput.value)
+    })
+
+    aboutCta?.addEventListener('click', () => {
+      window.location.href = 'https://www.instagram.com/corediski?igsh=NDRweXV0dHZsdXR6'
     })
   }
 
@@ -1335,7 +1565,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
       checkoutState.form.billingAddress = target?.value ?? ''
     })
 
-    checkoutForm?.addEventListener('submit', (event) => {
+    checkoutForm?.addEventListener('submit', async (event) => {
       event.preventDefault()
 
       if (!cartState.items.length) {
@@ -1367,20 +1597,37 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         email: session.user.email ?? profileState.profile?.email ?? 'No email address',
         id: `CD-${Date.now().toString().slice(-6)}`,
         items: getCartLineItems(cartState.items),
+        paymentStatus: 'awaiting_approval',
         shippingAddress: checkoutState.form.shippingAddress.trim(),
         status: 'pending',
-        total: getCartSubtotal(cartState.items),
+        total: getCartTotal(cartState.items),
         userId: session.user.id,
       }
 
-      orderState.items = [order, ...orderState.items]
+      let persistedOrder = order
+
+      if (isSupabaseConfigured) {
+        const { data, error } = await createOrderRecord(order)
+
+        if (error || !data) {
+          setCheckoutNotice({
+            tone: 'error',
+            message: error?.message ?? 'Unable to save this order to Supabase right now.',
+          })
+          return
+        }
+
+        persistedOrder = data
+      }
+
+      orderState.items = [persistedOrder, ...orderState.items]
       persistOrders()
       syncProfileOrders(session.user.id)
       clearCart()
       checkoutState.notice = null
       profileState.notice = {
-        tone: 'success',
-        message: `Order ${order.id} placed successfully. Payment integration is the next step.`,
+        tone: 'info',
+        message: `Order ${persistedOrder.id} is awaiting payment approval. It will only move into processing once an admin confirms payment.`,
       }
       navigateTo('profile')
     })
@@ -1402,6 +1649,29 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     const analyticsButton = appRoot.querySelector<HTMLButtonElement>('#admin-nav-analytics')
     const settingsButton = appRoot.querySelector<HTMLButtonElement>('#admin-nav-settings')
     const searchInput = appRoot.querySelector<HTMLInputElement>('#admin-search-input')
+    const orderSearchInput = appRoot.querySelector<HTMLInputElement>('#admin-order-search-input')
+    const orderFilterForm = appRoot.querySelector<HTMLFormElement>('#admin-order-filter-form')
+    const orderStatusFilter =
+      appRoot.querySelector<HTMLSelectElement>('#admin-order-status-filter')
+    const customerSearchInput =
+      appRoot.querySelector<HTMLInputElement>('#admin-customer-search-input')
+    const customerFilterForm = appRoot.querySelector<HTMLFormElement>('#admin-customer-filter-form')
+    const customerRoleFilter =
+      appRoot.querySelector<HTMLSelectElement>('#admin-customer-role-filter')
+    const approveOrderButtons =
+      appRoot.querySelectorAll<HTMLButtonElement>('[data-admin-approve-order]')
+    const shipOrderButtons = appRoot.querySelectorAll<HTMLButtonElement>('[data-admin-ship-order]')
+    const completeOrderButtons =
+      appRoot.querySelectorAll<HTMLButtonElement>('[data-admin-complete-order]')
+    const promoteCustomerButtons = appRoot.querySelectorAll<HTMLButtonElement>(
+      '[data-admin-promote-customer]',
+    )
+    const demoteCustomerButtons = appRoot.querySelectorAll<HTMLButtonElement>(
+      '[data-admin-demote-customer]',
+    )
+    const removeCustomerButtons = appRoot.querySelectorAll<HTMLButtonElement>(
+      '[data-admin-remove-customer]',
+    )
     const productForm = appRoot.querySelector<HTMLFormElement>('#admin-product-form')
     const clubOrNationInput = appRoot.querySelector<HTMLInputElement>('#admin-club-or-nation')
     const productTitleInput = appRoot.querySelector<HTMLInputElement>('#admin-product-title')
@@ -1409,9 +1679,39 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     const variantInput = appRoot.querySelector<HTMLInputElement>('#admin-variant')
     const priceInput = appRoot.querySelector<HTMLInputElement>('#admin-price')
     const imageUrlInput = appRoot.querySelector<HTMLInputElement>('#admin-image-url')
+    const leagueInput = appRoot.querySelector<HTMLInputElement>('#admin-league')
+    const conditionInput = appRoot.querySelector<HTMLSelectElement>('#admin-condition')
+    const authenticityInput = appRoot.querySelector<HTMLSelectElement>('#admin-authenticity')
     const tagsInput = appRoot.querySelector<HTMLInputElement>('#admin-tags')
     const featuredInput = appRoot.querySelector<HTMLInputElement>('#admin-featured')
     const cancelEditButton = appRoot.querySelector<HTMLButtonElement>('#admin-cancel-edit')
+    const settingsForm = appRoot.querySelector<HTMLFormElement>('#admin-settings-form')
+    const settingsStoreNameInput =
+      appRoot.querySelector<HTMLInputElement>('#admin-settings-store-name')
+    const settingsSupportEmailInput =
+      appRoot.querySelector<HTMLInputElement>('#admin-settings-support-email')
+    const settingsSupportPhoneInput =
+      appRoot.querySelector<HTMLInputElement>('#admin-settings-support-phone')
+    const settingsCurrencyInput =
+      appRoot.querySelector<HTMLSelectElement>('#admin-settings-currency')
+    const settingsTaxRateInput =
+      appRoot.querySelector<HTMLInputElement>('#admin-settings-tax-rate')
+    const settingsFlatShippingRateInput = appRoot.querySelector<HTMLInputElement>(
+      '#admin-settings-flat-shipping-rate',
+    )
+    const settingsLowStockThresholdInput = appRoot.querySelector<HTMLInputElement>(
+      '#admin-settings-low-stock-threshold',
+    )
+    const settingsSendAdminNotificationsInput = appRoot.querySelector<HTMLInputElement>(
+      '#admin-settings-send-admin-notifications',
+    )
+    const settingsMaintenanceModeInput = appRoot.querySelector<HTMLInputElement>(
+      '#admin-settings-maintenance-mode',
+    )
+    const settingsRequireDoubleOptInInput = appRoot.querySelector<HTMLInputElement>(
+      '#admin-settings-require-double-opt-in',
+    )
+    const resetSettingsButton = appRoot.querySelector<HTMLButtonElement>('#admin-reset-settings')
     const editButtons = appRoot.querySelectorAll<HTMLButtonElement>('[data-admin-edit-product]')
     const sidebarButtons = Array.from(
       appRoot.querySelectorAll<HTMLButtonElement>('.admin-sidebar-link'),
@@ -1456,7 +1756,9 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     })
 
     supportButton?.addEventListener('click', () => {
-      window.location.href = 'mailto:support@corediski.com'
+      const supportEmail = adminState.settingsForm.supportEmail.trim() || 'support@corediski.com'
+
+      window.location.href = `mailto:${encodeURIComponent(supportEmail)}`
     })
 
     signOutButton?.addEventListener('click', () => {
@@ -1473,23 +1775,13 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     })
 
     ordersButton?.addEventListener('click', () => {
-      if (adminState.activeView !== 'dashboard') {
-        adminState.activeView = 'dashboard'
-        render()
-        return
-      }
-
-      scrollAdminSection(ordersButton, '#admin-orders-section')
+      adminState.activeView = 'orders'
+      render()
     })
 
     customersButton?.addEventListener('click', () => {
-      if (adminState.activeView !== 'dashboard') {
-        adminState.activeView = 'dashboard'
-        render()
-        return
-      }
-
-      scrollAdminSection(customersButton, '#admin-customers-section')
+      adminState.activeView = 'customers'
+      render()
     })
 
     categoriesButton?.addEventListener('click', () => {
@@ -1503,23 +1795,13 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     })
 
     analyticsButton?.addEventListener('click', () => {
-      if (adminState.activeView !== 'dashboard') {
-        adminState.activeView = 'dashboard'
-        render()
-        return
-      }
-
-      scrollAdminSection(analyticsButton, '#admin-analytics-section')
+      adminState.activeView = 'analytics'
+      render()
     })
 
     settingsButton?.addEventListener('click', () => {
-      if (adminState.activeView !== 'dashboard') {
-        adminState.activeView = 'dashboard'
-        render()
-        return
-      }
-
-      scrollAdminSection(settingsButton, '#admin-settings-section')
+      adminState.activeView = 'settings'
+      render()
     })
 
     searchInput?.addEventListener('input', (event) => {
@@ -1527,6 +1809,433 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
 
       adminSearchTerm = target?.value ?? ''
       render()
+    })
+
+    orderSearchInput?.addEventListener('input', (event) => {
+      const target = event.currentTarget as HTMLInputElement | null
+
+      adminSearchTerm = target?.value ?? ''
+    })
+
+    orderStatusFilter?.addEventListener('change', (event) => {
+      const target = event.currentTarget as HTMLSelectElement | null
+
+      adminState.orderFilter =
+        target?.value === 'paid' || target?.value === 'awaiting_approval' ? target.value : 'all'
+    })
+
+    orderFilterForm?.addEventListener('submit', (event) => {
+      event.preventDefault()
+      adminState.activeView = 'orders'
+      render()
+    })
+
+    customerSearchInput?.addEventListener('input', (event) => {
+      const target = event.currentTarget as HTMLInputElement | null
+
+      adminSearchTerm = target?.value ?? ''
+    })
+
+    customerRoleFilter?.addEventListener('change', (event) => {
+      const target = event.currentTarget as HTMLSelectElement | null
+
+      adminState.customerFilter =
+        target?.value === 'admin' || target?.value === 'customer' ? target.value : 'all'
+    })
+
+    customerFilterForm?.addEventListener('submit', (event) => {
+      event.preventDefault()
+      adminState.activeView = 'customers'
+      render()
+    })
+
+    settingsStoreNameInput?.addEventListener('input', (event) => {
+      adminState.settingsForm.storeName = (event.currentTarget as HTMLInputElement).value
+    })
+
+    settingsSupportEmailInput?.addEventListener('input', (event) => {
+      adminState.settingsForm.supportEmail = (event.currentTarget as HTMLInputElement).value
+    })
+
+    settingsSupportPhoneInput?.addEventListener('input', (event) => {
+      adminState.settingsForm.supportPhone = (event.currentTarget as HTMLInputElement).value
+    })
+
+    settingsCurrencyInput?.addEventListener('change', (event) => {
+      const nextCurrency = (event.currentTarget as HTMLSelectElement).value
+
+      adminState.settingsForm.currency =
+        nextCurrency === 'USD' || nextCurrency === 'EUR' || nextCurrency === 'GBP' ? nextCurrency : 'ZAR'
+    })
+
+    settingsTaxRateInput?.addEventListener('input', (event) => {
+      adminState.settingsForm.taxRate = (event.currentTarget as HTMLInputElement).value
+    })
+
+    settingsFlatShippingRateInput?.addEventListener('input', (event) => {
+      adminState.settingsForm.flatShippingRate = (event.currentTarget as HTMLInputElement).value
+    })
+
+    settingsLowStockThresholdInput?.addEventListener('input', (event) => {
+      adminState.settingsForm.lowStockThreshold = (event.currentTarget as HTMLInputElement).value
+    })
+
+    settingsSendAdminNotificationsInput?.addEventListener('change', (event) => {
+      adminState.settingsForm.sendAdminNotifications = (event.currentTarget as HTMLInputElement).checked
+    })
+
+    settingsMaintenanceModeInput?.addEventListener('change', (event) => {
+      adminState.settingsForm.maintenanceMode = (event.currentTarget as HTMLInputElement).checked
+    })
+
+    settingsRequireDoubleOptInInput?.addEventListener('change', (event) => {
+      adminState.settingsForm.requireNewsletterDoubleOptIn = (
+        event.currentTarget as HTMLInputElement
+      ).checked
+    })
+
+    settingsForm?.addEventListener('submit', (event) => {
+      event.preventDefault()
+
+      const storeName = adminState.settingsForm.storeName.trim()
+      const supportEmail = adminState.settingsForm.supportEmail.trim().toLowerCase()
+      const supportPhone = adminState.settingsForm.supportPhone.trim()
+      const taxRate = Number(adminState.settingsForm.taxRate)
+      const flatShippingRate = Number(adminState.settingsForm.flatShippingRate)
+      const lowStockThreshold = Number(adminState.settingsForm.lowStockThreshold)
+
+      if (!storeName) {
+        adminState.notice = {
+          tone: 'error',
+          message: 'Enter a store name before saving settings.',
+        }
+        render()
+        return
+      }
+
+      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(supportEmail)) {
+        adminState.notice = {
+          tone: 'error',
+          message: 'Enter a valid support email before saving settings.',
+        }
+        render()
+        return
+      }
+
+      if (!supportPhone) {
+        adminState.notice = {
+          tone: 'error',
+          message: 'Enter a support phone number before saving settings.',
+        }
+        render()
+        return
+      }
+
+      if (Number.isNaN(taxRate) || taxRate < 0) {
+        adminState.notice = {
+          tone: 'error',
+          message: 'Tax rate must be 0 or greater.',
+        }
+        render()
+        return
+      }
+
+      if (Number.isNaN(flatShippingRate) || flatShippingRate < 0) {
+        adminState.notice = {
+          tone: 'error',
+          message: 'Flat shipping rate must be 0 or greater.',
+        }
+        render()
+        return
+      }
+
+      if (Number.isNaN(lowStockThreshold) || lowStockThreshold < 1) {
+        adminState.notice = {
+          tone: 'error',
+          message: 'Low stock threshold must be at least 1.',
+        }
+        render()
+        return
+      }
+
+      adminState.settingsForm = {
+        ...adminState.settingsForm,
+        flatShippingRate: `${flatShippingRate}`,
+        lastUpdatedAt: new Date().toISOString(),
+        lowStockThreshold: `${Math.round(lowStockThreshold)}`,
+        storeName,
+        supportEmail,
+        supportPhone,
+        taxRate: `${taxRate}`,
+      }
+
+      writeAdminSettings(adminState.settingsForm)
+      adminState.activeView = 'settings'
+      adminState.notice = {
+        tone: 'success',
+        message: 'Store settings saved successfully.',
+      }
+      render()
+    })
+
+    resetSettingsButton?.addEventListener('click', () => {
+      adminState.settingsForm = createDefaultAdminSettingsForm()
+      writeAdminSettings(adminState.settingsForm)
+      adminState.activeView = 'settings'
+      adminState.notice = {
+        tone: 'info',
+        message: 'Store settings were reset to defaults.',
+      }
+      render()
+    })
+
+    const handleCustomerRoleChange = async (
+      profileId: string,
+      role: 'admin' | 'customer',
+      successMessage: string,
+    ) => {
+      const { data, error } = await updateProfileRole(profileId, role)
+
+      if (error || !data) {
+        adminState.notice = {
+          tone: 'error',
+          message: error?.message ?? 'Unable to update this customer role right now.',
+        }
+        render()
+        return
+      }
+
+      upsertAdminProfile(data)
+
+      if (profileState.profile?.id === data.id) {
+        profileState.profile = data
+        syncProfileForm(data)
+      }
+
+      if (profileState.profile?.id === data.id && data.role !== 'admin') {
+        profileState.notice = {
+          tone: 'success',
+          message: 'Your admin access was removed. You can continue from your profile page.',
+        }
+        navigateTo('profile')
+        return
+      }
+
+      adminState.notice = {
+        tone: 'success',
+        message: successMessage,
+      }
+      render()
+    }
+
+    const handleCustomerRemoval = async (profileId: string) => {
+      const { data, error } = await updateProfileActiveStatus(profileId, false)
+
+      if (error || !data) {
+        adminState.notice = {
+          tone: 'error',
+          message: error?.message ?? 'Unable to remove this account right now.',
+        }
+        render()
+        return
+      }
+
+      upsertAdminProfile(data)
+
+      if (profileState.profile?.id === data.id) {
+        await signOutCurrentUser()
+        handleSignedOutState({
+          tone: 'info',
+          message: 'Your account has been removed and signed out.',
+        })
+        return
+      }
+
+      adminState.notice = {
+        tone: 'success',
+        message: 'Customer account removed successfully.',
+      }
+      render()
+    }
+
+    approveOrderButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const orderId = button.dataset.adminApproveOrder
+
+        if (!orderId) {
+          return
+        }
+
+        const order = orderState.items.find((item) => item.id === orderId)
+
+        if (!order) {
+          return
+        }
+
+        const nextOrder: OrderRecord = {
+          ...order,
+          paymentStatus: 'paid',
+        }
+
+        if (isSupabaseConfigured) {
+          const { data, error } = await updateOrderRecord(nextOrder)
+
+          if (error || !data) {
+            adminState.notice = {
+              tone: 'error',
+              message: error?.message ?? 'Unable to update this order in Supabase right now.',
+            }
+            render()
+            return
+          }
+
+          Object.assign(order, data)
+        } else {
+          Object.assign(order, nextOrder)
+        }
+
+        persistOrders()
+        if (session) {
+          syncProfileOrders(session.user.id)
+        }
+        adminState.notice = {
+          tone: 'success',
+          message: `Payment approved for ${order.id}. The order is now officially placed.`,
+        }
+        render()
+      })
+    })
+
+    shipOrderButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const orderId = button.dataset.adminShipOrder
+
+        if (!orderId) {
+          return
+        }
+
+        const order = orderState.items.find((item) => item.id === orderId)
+
+        if (!order || order.paymentStatus !== 'paid') {
+          return
+        }
+
+        const nextOrder: OrderRecord = {
+          ...order,
+          status: 'shipped',
+        }
+
+        if (isSupabaseConfigured) {
+          const { data, error } = await updateOrderRecord(nextOrder)
+
+          if (error || !data) {
+            adminState.notice = {
+              tone: 'error',
+              message: error?.message ?? 'Unable to update this order in Supabase right now.',
+            }
+            render()
+            return
+          }
+
+          Object.assign(order, data)
+        } else {
+          Object.assign(order, nextOrder)
+        }
+
+        persistOrders()
+        if (session) {
+          syncProfileOrders(session.user.id)
+        }
+        adminState.notice = {
+          tone: 'success',
+          message: `${order.id} marked as shipped.`,
+        }
+        render()
+      })
+    })
+
+    completeOrderButtons.forEach((button) => {
+      button.addEventListener('click', async () => {
+        const orderId = button.dataset.adminCompleteOrder
+
+        if (!orderId) {
+          return
+        }
+
+        const order = orderState.items.find((item) => item.id === orderId)
+
+        if (!order || order.paymentStatus !== 'paid') {
+          return
+        }
+
+        const nextOrder: OrderRecord = {
+          ...order,
+          status: 'completed',
+        }
+
+        if (isSupabaseConfigured) {
+          const { data, error } = await updateOrderRecord(nextOrder)
+
+          if (error || !data) {
+            adminState.notice = {
+              tone: 'error',
+              message: error?.message ?? 'Unable to update this order in Supabase right now.',
+            }
+            render()
+            return
+          }
+
+          Object.assign(order, data)
+        } else {
+          Object.assign(order, nextOrder)
+        }
+
+        persistOrders()
+        if (session) {
+          syncProfileOrders(session.user.id)
+        }
+        adminState.notice = {
+          tone: 'success',
+          message: `${order.id} marked as completed.`,
+        }
+        render()
+      })
+    })
+
+    promoteCustomerButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const profileId = button.dataset.adminPromoteCustomer
+
+        if (!profileId) {
+          return
+        }
+
+        void handleCustomerRoleChange(profileId, 'admin', 'Customer promoted to admin.')
+      })
+    })
+
+    demoteCustomerButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const profileId = button.dataset.adminDemoteCustomer
+
+        if (!profileId) {
+          return
+        }
+
+        void handleCustomerRoleChange(profileId, 'customer', 'Admin account demoted to customer.')
+      })
+    })
+
+    removeCustomerButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        const profileId = button.dataset.adminRemoveCustomer
+
+        if (!profileId) {
+          return
+        }
+
+        void handleCustomerRemoval(profileId)
+      })
     })
 
     clubOrNationInput?.addEventListener('input', (event) => {
@@ -1551,6 +2260,18 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
 
     imageUrlInput?.addEventListener('input', (event) => {
       adminState.form.imageUrl = (event.currentTarget as HTMLInputElement).value
+    })
+
+    leagueInput?.addEventListener('input', (event) => {
+      adminState.form.league = (event.currentTarget as HTMLInputElement).value
+    })
+
+    conditionInput?.addEventListener('change', (event) => {
+      adminState.form.condition = (event.currentTarget as HTMLSelectElement).value
+    })
+
+    authenticityInput?.addEventListener('change', (event) => {
+      adminState.form.authenticity = (event.currentTarget as HTMLSelectElement).value
     })
 
     tagsInput?.addEventListener('input', (event) => {
@@ -1584,9 +2305,12 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         adminState.activeView = 'products'
         adminState.editingProductId = product.id
         adminState.form = {
+          authenticity: product.authenticity,
           clubOrNation: product.clubOrNation,
+          condition: product.condition,
           imageUrl: product.imageUrl ?? '',
           isFeatured: product.isFeatured,
+          league: product.league,
           price: `${product.price}`,
           productTitle: product.name,
           season: product.seasonLabel.replace(` ${product.variant}`, ''),
@@ -1601,20 +2325,35 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
       })
     })
 
-    productForm?.addEventListener('submit', (event) => {
+    productForm?.addEventListener('submit', async (event) => {
       event.preventDefault()
 
       const clubOrNation = adminState.form.clubOrNation.trim()
       const productTitle = adminState.form.productTitle.trim()
       const season = adminState.form.season.trim()
       const variant = adminState.form.variant.trim()
+      const league = adminState.form.league.trim()
+      const condition = adminState.form.condition.trim()
+      const authenticity = adminState.form.authenticity.trim()
       const price = Number(adminState.form.price)
       const year = parseAdminSeasonStart(season)
 
-      if (!clubOrNation || !productTitle || !season || !variant || !year || Number.isNaN(price) || price <= 0) {
+      if (
+        !clubOrNation ||
+        !productTitle ||
+        !season ||
+        !variant ||
+        !league ||
+        !condition ||
+        !authenticity ||
+        !year ||
+        Number.isNaN(price) ||
+        price <= 0
+      ) {
         adminState.notice = {
           tone: 'error',
-          message: 'Complete club, title, season, variant, and a valid price before saving.',
+          message:
+            'Complete club, title, season, variant, league, condition, authenticity, and a valid price before saving.',
         }
         render()
         return
@@ -1625,11 +2364,14 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         : null
 
       const nextProduct = buildAdminProduct({
+        authenticity,
         clubOrNation,
+        condition,
         existingId: existingProduct?.id,
         imageTheme: existingProduct?.imageTheme,
         imageUrl: adminState.form.imageUrl,
         isFeatured: adminState.form.isFeatured,
+        league,
         price,
         productTitle,
         tags: adminState.form.tags
@@ -1642,16 +2384,30 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
 
       if (existingProduct) {
         nextProduct.availableSizes = existingProduct.availableSizes
-        nextProduct.authenticity = existingProduct.authenticity
-        nextProduct.condition = existingProduct.condition
         nextProduct.description = existingProduct.description
         nextProduct.freeShipping = existingProduct.freeShipping
         nextProduct.isWishlisted = existingProduct.isWishlisted
-        nextProduct.league = existingProduct.league
       }
 
       nextProduct.seasonLabel = `${season} ${variant}`
-      upsertShopProduct(nextProduct)
+      let persistedProduct = nextProduct
+
+      if (isSupabaseConfigured && session) {
+        const { data, error } = await upsertStoreProduct(nextProduct, session.user.id)
+
+        if (error || !data) {
+          adminState.notice = {
+            tone: 'error',
+            message: error?.message ?? 'Unable to save this product to Supabase right now.',
+          }
+          render()
+          return
+        }
+
+        persistedProduct = data
+      }
+
+      upsertShopProduct(persistedProduct)
       resetAdminProductForm()
       adminState.activeView = 'products'
       adminState.notice = {
@@ -1732,6 +2488,8 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
   if (!isSupabaseConfigured) {
     return
   }
+
+  await loadProductsFromDatabase()
 
   const {
     data: { session: initialSession },

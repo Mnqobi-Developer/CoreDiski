@@ -1,5 +1,8 @@
 import { brandLogoSrc } from '../../config/site.ts'
+import { escapeHtml } from '../../shared/utils/escapeHtml.ts'
 import { renderStorefrontShell } from '../../shared/templates/renderStorefrontShell.ts'
+import { getProductMediaAttributes } from '../shop/productMedia.ts'
+import type { ShopItem } from '../shop/shopTypes.ts'
 
 type RenderHomePageOptions = {
   actionButton: {
@@ -7,6 +10,7 @@ type RenderHomePageOptions = {
     isActive: boolean
     label: string
   }
+  featuredProducts: ShopItem[]
 }
 
 const searchIcon = `
@@ -33,7 +37,34 @@ const shieldIcon = `
   </svg>
 `
 
-export const renderHomePage = ({ actionButton }: RenderHomePageOptions) => {
+const heartIcon = (isWishlisted: boolean) => `
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 21.35 10.55 20C5.4 15.36 2 12.28 2 8.5A4.5 4.5 0 0 1 6.5 4C8.24 4 9.91 4.81 11 6.09 12.09 4.81 13.76 4 15.5 4A4.5 4.5 0 0 1 20 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35Z" ${isWishlisted ? 'fill="currentColor"' : 'fill="none" stroke="currentColor" stroke-width="1.8"'} />
+  </svg>
+`
+
+const renderFeaturedProductCard = (item: ShopItem) => `
+  <article class="shop-card home-featured-card">
+    <a class="shop-card-link" href="#product/${escapeHtml(item.id)}" data-product-id="${escapeHtml(item.id)}">
+      <div class="shop-card-media ${item.imageTheme}" ${getProductMediaAttributes(item)}></div>
+      <div class="shop-card-body">
+        <h3>${escapeHtml(item.name)}</h3>
+        <p>${escapeHtml(item.seasonLabel)}</p>
+        <strong>R ${item.price}</strong>
+      </div>
+    </a>
+    <button
+      class="shop-card-wishlist ${item.isWishlisted ? 'is-active' : ''}"
+      type="button"
+      data-wishlist-toggle="${escapeHtml(item.id)}"
+      aria-label="${item.isWishlisted ? 'Remove from wishlist' : 'Add to wishlist'}"
+    >
+      ${heartIcon(item.isWishlisted)}
+    </button>
+  </article>
+`
+
+export const renderHomePage = ({ actionButton, featuredProducts }: RenderHomePageOptions) => {
   const mainContent = `
     <section class="hero-home">
       <img class="hero-home-logo" src="${brandLogoSrc}" alt="Core Diski crest" />
@@ -93,6 +124,76 @@ export const renderHomePage = ({ actionButton }: RenderHomePageOptions) => {
         </article>
       </div>
     </section>
+
+    <section class="home-featured-section">
+      <div class="home-section-heading">
+        <h2>Featured</h2>
+        <p>Explore some of our most sought-after authentic football shirts.</p>
+      </div>
+
+      <div class="home-featured-grid">
+        ${featuredProducts.map(renderFeaturedProductCard).join('')}
+      </div>
+    </section>
+
+    <section class="home-about-section">
+      <div class="home-about-copy">
+        <h2>About Us</h2>
+        <p>
+          Welcome to Core Diski, the home for collectors of authentic, rare, and classic football shirts.
+          Our passion is to bring you the most sought-after, verified jerseys from legendary clubs and national teams.
+        </p>
+        <button id="home-about-cta" class="home-about-button" type="button">Learn More</button>
+      </div>
+
+      <aside class="home-about-highlight" aria-label="Historic Shirt Archive">
+        <div class="home-about-highlight-card">
+          <strong>Historic Shirt Archive</strong>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="home-footer">
+      <div class="home-footer-grid">
+        <section class="home-footer-brand">
+          <img class="home-footer-logo" src="${brandLogoSrc}" alt="Core Diski crest" />
+          <div>
+            <h2>CORE DISKI</h2>
+            <p>
+              Authentic football shirts for collectors who care about heritage, verification, and timeless design.
+            </p>
+          </div>
+        </section>
+
+        <nav class="home-footer-column" aria-label="Footer Navigation">
+          <h3>Explore</h3>
+          <a href="#home">Home</a>
+          <a href="#shop">Shop</a>
+          <a href="#cart">Cart</a>
+          <a href="#wishlist">Wishlist</a>
+        </nav>
+
+        <section class="home-footer-column">
+          <h3>Account</h3>
+          <a href="#profile">Profile</a>
+          <a href="#auth">Sign In</a>
+          <a href="#checkout">Checkout</a>
+          <a href="#shop">Featured Jerseys</a>
+        </section>
+
+        <section class="home-footer-column">
+          <h3>Contact</h3>
+          <a href="mailto:Corediski@gmail.com">Corediski@gmail.com</a>
+          <a href="https://www.instagram.com/corediski?igsh=NDRweXV0dHZsdXR6" target="_blank" rel="noreferrer">Instagram</a>
+          <span>South Africa</span>
+          <span>Authentic Football Shirts</span>
+        </section>
+      </div>
+
+      <div class="home-footer-bottom">
+        <p>© 2026 Core Diski. Built for shirt collectors.</p>
+      </div>
+    </footer>
   `
 
   return renderStorefrontShell({

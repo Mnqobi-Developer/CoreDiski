@@ -136,11 +136,14 @@ const inferEra = (year: number) => {
 
 const normalizeStatus = (value: unknown): ProductStatus => (value === 'active' ? 'active' : 'active')
 
-const normalizeProduct = (value: ShopItem): ShopItem => ({
+export const normalizeShopProduct = (value: ShopItem): ShopItem => ({
   ...value,
+  authenticity: value.authenticity || 'Verified',
   clubOrNation: value.clubOrNation || value.name,
+  condition: value.condition || 'Excellent',
   imageUrl: value.imageUrl?.trim() || null,
   isFeatured: Boolean(value.isFeatured),
+  league: value.league || 'Storefront Collection',
   seasonLabel: value.seasonLabel,
   status: normalizeStatus(value.status),
   tags: Array.isArray(value.tags) ? value.tags : [],
@@ -168,27 +171,27 @@ const isValidProduct = (value: unknown): value is ShopItem => {
 
 const readStoredCatalog = (): ShopItem[] => {
   if (typeof window === 'undefined') {
-    return defaultShopCatalog.map(normalizeProduct)
+    return defaultShopCatalog.map(normalizeShopProduct)
   }
 
   try {
     const rawValue = window.localStorage.getItem(productStorageKey)
 
     if (!rawValue) {
-      return defaultShopCatalog.map(normalizeProduct)
+      return defaultShopCatalog.map(normalizeShopProduct)
     }
 
     const parsedValue = JSON.parse(rawValue)
 
     if (!Array.isArray(parsedValue)) {
-      return defaultShopCatalog.map(normalizeProduct)
+      return defaultShopCatalog.map(normalizeShopProduct)
     }
 
-    const nextCatalog = parsedValue.filter(isValidProduct).map(normalizeProduct)
+    const nextCatalog = parsedValue.filter(isValidProduct).map(normalizeShopProduct)
 
-    return nextCatalog.length ? nextCatalog : defaultShopCatalog.map(normalizeProduct)
+    return nextCatalog.length ? nextCatalog : defaultShopCatalog.map(normalizeShopProduct)
   } catch {
-    return defaultShopCatalog.map(normalizeProduct)
+    return defaultShopCatalog.map(normalizeShopProduct)
   }
 }
 
@@ -209,7 +212,7 @@ export const hydrateShopCatalog = () => {
 }
 
 export const replaceShopCatalog = (nextCatalog: ShopItem[]) => {
-  shopCatalog.splice(0, shopCatalog.length, ...nextCatalog.map(normalizeProduct))
+  shopCatalog.splice(0, shopCatalog.length, ...nextCatalog.map(normalizeShopProduct))
   persistShopCatalog()
 }
 
@@ -221,32 +224,38 @@ export const createShopProductId = (clubOrNation: string, season: string, varian
     .replace(/^-+|-+$/g, '')
 
 export const buildAdminProduct = ({
+  authenticity,
   clubOrNation,
+  condition,
   existingId,
   imageTheme,
   imageUrl,
   isFeatured,
+  league,
   price,
   productTitle,
   tags,
   variant,
   year,
 }: {
+  authenticity: string
   clubOrNation: string
+  condition: string
   existingId?: string
   imageTheme?: string
   imageUrl: string
   isFeatured: boolean
+  league: string
   price: number
   productTitle: string
   tags: string[]
   variant: string
   year: number
 }): ShopItem => ({
-  authenticity: 'Verified',
+  authenticity,
   availableSizes: ['S', 'M', 'L', 'XL'],
   clubOrNation,
-  condition: 'Excellent',
+  condition,
   description: `${productTitle} ${variant} shirt available in the Core Diski collection.`,
   era: inferEra(year),
   freeShipping: true,
@@ -255,7 +264,7 @@ export const buildAdminProduct = ({
   imageUrl: imageUrl.trim() || null,
   isFeatured,
   isWishlisted: false,
-  league: 'Storefront Collection',
+  league,
   name: productTitle,
   price,
   seasonLabel: `${year}-${year + 1} ${variant}`,
@@ -269,9 +278,9 @@ export const upsertShopProduct = (product: ShopItem) => {
   const existingIndex = shopCatalog.findIndex((item) => item.id === product.id)
 
   if (existingIndex >= 0) {
-    shopCatalog.splice(existingIndex, 1, normalizeProduct(product))
+    shopCatalog.splice(existingIndex, 1, normalizeShopProduct(product))
   } else {
-    shopCatalog.unshift(normalizeProduct(product))
+    shopCatalog.unshift(normalizeShopProduct(product))
   }
 
   persistShopCatalog()

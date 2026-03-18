@@ -1,3 +1,4 @@
+import { getNationwideShippingFee } from '../../config/shipping.ts'
 import { shopCatalog } from '../shop/shopCatalog.ts'
 import type { CartItem, CartLineItem } from './cartTypes.ts'
 
@@ -22,6 +23,10 @@ export const getCartLineItems = (items: CartItem[]): CartLineItem[] =>
 
 export const getCartSubtotal = (items: CartItem[]) =>
   getCartLineItems(items).reduce((total, item) => total + item.subtotal, 0)
+
+export const getCartShippingTotal = (items: CartItem[]) => getNationwideShippingFee(getCartSubtotal(items))
+
+export const getCartTotal = (items: CartItem[]) => getCartSubtotal(items) + getCartShippingTotal(items)
 
 export const getCartItemCount = (items: CartItem[]) =>
   items.reduce((count, item) => count + item.quantity, 0)

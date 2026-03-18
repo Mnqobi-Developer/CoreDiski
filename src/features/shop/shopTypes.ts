@@ -1,6 +1,6 @@
 export type ShopEra = '1990s' | '2000s' | '2010s' | 'All eras'
 
-export type PriceRange = 'all' | '0-200' | '201-300' | '301-500'
+export type PriceRange = '0-500' | '500-1000' | '1000-2000' | '2000+' | 'all'
 
 export type SortOption = 'most-popular' | 'price-low-high' | 'price-high-low' | 'latest'
 

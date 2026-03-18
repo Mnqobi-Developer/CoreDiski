@@ -27,5 +27,7 @@ export type RenderCheckoutPageOptions = {
   form: CheckoutFormValues
   lines: CartLineItem[]
   notice: Notice | null
+  shipping: number
   subtotal: number
+  total: number
 }

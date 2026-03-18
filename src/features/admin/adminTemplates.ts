@@ -12,6 +12,13 @@ type RenderAdminPageOptions = {
 
 const formatCurrency = (value: number) => `R ${value}`
 
+const formatJoinedDate = (isoDate: string) =>
+  new Intl.DateTimeFormat('en-US', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  }).format(new Date(isoDate))
+
 const renderNotice = (notice: AdminState['notice']) => {
   if (!notice) {
     return ''
@@ -76,7 +83,7 @@ const renderRecentOrders = (orders: AdminDashboardData['recentOrders']) => {
               </div>
               <div>
                 <strong>${formatCurrency(order.total)}</strong>
-                <span>${escapeHtml(order.status)}</span>
+                <span>${escapeHtml(order.paymentStatus === 'paid' ? order.status : 'awaiting approval')}</span>
               </div>
             </article>
           `,
@@ -85,6 +92,243 @@ const renderRecentOrders = (orders: AdminDashboardData['recentOrders']) => {
     </div>
   `
 }
+
+const renderOrdersPage = (
+  orders: AdminDashboardData['filteredOrders'],
+  state: AdminState,
+  data: AdminDashboardData,
+  searchTerm: string,
+) => `
+  <section class="admin-page-header">
+    <input
+      id="admin-search-input"
+      class="admin-search-input"
+      type="search"
+      value="${escapeHtml(searchTerm)}"
+      placeholder="Search..."
+    />
+    <div class="admin-page-label">Orders</div>
+  </section>
+
+  <section class="admin-heading-block">
+    <h1>Orders</h1>
+  </section>
+
+  ${renderNotice(state.notice)}
+
+  <section class="admin-stats-grid">
+    <article class="admin-stat-card">
+      <h2>Total Orders</h2>
+      <strong>${data.stats.totalOrders}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Paid Orders</h2>
+      <strong>${data.totalPaidOrders}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Pending Orders</h2>
+      <strong>${data.totalPendingApprovalOrders}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Avg. Order Value</h2>
+      <strong>${formatCurrency(data.averagePaidOrderValue)}</strong>
+    </article>
+  </section>
+
+  <section id="admin-orders-section" class="admin-panel admin-panel-wide">
+    <h2>Order Management</h2>
+    <p class="admin-empty-copy admin-panel-copy">
+      Filter, review, and update payment status for all store orders.
+    </p>
+
+    <form id="admin-order-filter-form" class="admin-order-toolbar">
+      <input
+        id="admin-order-search-input"
+        class="admin-search-input"
+        type="search"
+        value="${escapeHtml(searchTerm)}"
+        placeholder="Search by order #, customer, email, or address..."
+      />
+
+      <label class="shop-select-wrap">
+        <select id="admin-order-status-filter" class="shop-select">
+          <option value="all" ${state.orderFilter === 'all' ? 'selected' : ''}>All Statuses</option>
+          <option value="awaiting_approval" ${state.orderFilter === 'awaiting_approval' ? 'selected' : ''}>Awaiting Approval</option>
+          <option value="paid" ${state.orderFilter === 'paid' ? 'selected' : ''}>Paid</option>
+        </select>
+      </label>
+
+      <button class="admin-edit-button" type="submit">Apply</button>
+    </form>
+
+    ${
+      orders.length
+        ? `
+          <div class="admin-orders-table">
+            <div class="admin-order-table-head">
+              <span>Order</span>
+              <span>Customer</span>
+              <span>Items</span>
+              <span>Total</span>
+              <span>Status</span>
+              <span>Date</span>
+              <span>Action</span>
+            </div>
+            ${orders
+              .map(
+                (order) => `
+                  <div class="admin-order-row">
+                    <div class="admin-order-cell">
+                      <strong>${escapeHtml(order.id)}</strong>
+                      <span>${escapeHtml(order.shippingAddress)}</span>
+                    </div>
+                    <div class="admin-order-cell">
+                      <strong>${escapeHtml(order.email)}</strong>
+                      <span>${escapeHtml(order.userId)}</span>
+                    </div>
+                    <div class="admin-order-cell">${order.items.length}</div>
+                    <div class="admin-order-cell">${formatCurrency(order.total)}</div>
+                    <div class="admin-order-cell">
+                      <span class="admin-pill">${order.paymentStatus === 'paid' ? 'Paid' : 'Awaiting Approval'}</span>
+                    </div>
+                    <div class="admin-order-cell">${escapeHtml(new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short', year: 'numeric' }).format(new Date(order.createdAt)))}</div>
+                    <div class="admin-order-cell">
+                      ${
+                        order.paymentStatus === 'awaiting_approval'
+                          ? `<button class="admin-edit-button" type="button" data-admin-approve-order="${escapeHtml(order.id)}">Approve Payment</button>`
+                          : order.status === 'pending'
+                            ? `<button class="admin-edit-button" type="button" data-admin-ship-order="${escapeHtml(order.id)}">Mark Shipped</button>`
+                            : order.status === 'shipped'
+                              ? `<button class="admin-edit-button" type="button" data-admin-complete-order="${escapeHtml(order.id)}">Mark Completed</button>`
+                              : `<span class="admin-empty-copy admin-inline-copy">No action</span>`
+                      }
+                    </div>
+                  </div>
+                `,
+              )
+              .join('')}
+          </div>
+        `
+        : '<p class="admin-empty-copy">No orders match your current filters.</p>'
+    }
+  </section>
+`
+
+const renderCustomersPage = (
+  customers: AdminDashboardData['filteredCustomers'],
+  state: AdminState,
+  data: AdminDashboardData,
+  searchTerm: string,
+) => `
+  <section class="admin-page-header">
+    <input
+      id="admin-search-input"
+      class="admin-search-input"
+      type="search"
+      value="${escapeHtml(searchTerm)}"
+      placeholder="Search..."
+    />
+    <div class="admin-page-label">Customers</div>
+  </section>
+
+  <section class="admin-heading-block">
+    <h1>Customers</h1>
+  </section>
+
+  ${renderNotice(state.notice)}
+
+  <section class="admin-stats-grid">
+    <article class="admin-stat-card">
+      <h2>Total Accounts</h2>
+      <strong>${data.customerStats.totalAccounts}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Admins</h2>
+      <strong>${data.customerStats.admins}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Customers</h2>
+      <strong>${data.customerStats.customers}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Profiles Completed</h2>
+      <strong>${data.customerStats.profilesCompleted}</strong>
+    </article>
+  </section>
+
+  <section id="admin-customers-section" class="admin-panel admin-panel-wide">
+    <h2>Customer Accounts</h2>
+    <p class="admin-empty-copy admin-panel-copy">
+      View all registered accounts, search and filter users, promote or demote admins, and remove accounts.
+    </p>
+
+    <form id="admin-customer-filter-form" class="admin-customer-toolbar">
+      <input
+        id="admin-customer-search-input"
+        class="admin-search-input"
+        type="search"
+        value="${escapeHtml(searchTerm)}"
+        placeholder="Search name, email, phone, address..."
+      />
+
+      <label class="shop-select-wrap">
+        <select id="admin-customer-role-filter" class="shop-select">
+          <option value="all" ${state.customerFilter === 'all' ? 'selected' : ''}>All Roles</option>
+          <option value="admin" ${state.customerFilter === 'admin' ? 'selected' : ''}>Admins</option>
+          <option value="customer" ${state.customerFilter === 'customer' ? 'selected' : ''}>Customers</option>
+        </select>
+      </label>
+
+      <button class="admin-edit-button" type="submit">Apply</button>
+    </form>
+
+    ${
+      customers.length
+        ? `
+          <div class="admin-customers-table">
+            <div class="admin-customer-table-head">
+              <span>Name</span>
+              <span>Email</span>
+              <span>Phone</span>
+              <span>Address</span>
+              <span>Role</span>
+              <span>Joined</span>
+              <span>Actions</span>
+            </div>
+            ${customers
+              .map(
+                (customer) => `
+                  <div class="admin-customer-row">
+                    <div class="admin-customer-cell">
+                      <strong>${escapeHtml(customer.fullName || 'Customer')}</strong>
+                    </div>
+                    <div class="admin-customer-cell">${escapeHtml(customer.email)}</div>
+                    <div class="admin-customer-cell">${customer.phone ? escapeHtml(customer.phone) : '&mdash;'}</div>
+                    <div class="admin-customer-cell">${customer.address ? escapeHtml(customer.address) : '&mdash;'}</div>
+                    <div class="admin-customer-cell">
+                      <span class="admin-pill ${customer.role === 'admin' ? 'admin-pill-admin' : 'admin-pill-customer'}">
+                        ${customer.role === 'admin' ? 'Admin' : 'Customer'}
+                      </span>
+                    </div>
+                    <div class="admin-customer-cell">${escapeHtml(formatJoinedDate(customer.createdAt))}</div>
+                    <div class="admin-customer-cell admin-customer-actions">
+                      ${
+                        customer.role === 'admin'
+                          ? `<button class="admin-edit-button" type="button" data-admin-demote-customer="${escapeHtml(customer.id)}">Demote</button>`
+                          : `<button class="admin-edit-button" type="button" data-admin-promote-customer="${escapeHtml(customer.id)}">Promote</button>`
+                      }
+                      <button class="admin-remove-button" type="button" data-admin-remove-customer="${escapeHtml(customer.id)}">Remove</button>
+                    </div>
+                  </div>
+                `,
+              )
+              .join('')}
+          </div>
+        `
+        : '<p class="admin-empty-copy">No customer accounts match your current filters.</p>'
+    }
+  </section>
+`
 
 const renderCustomers = (customers: AdminDashboardData['customers']) => {
   if (!customers.length) {
@@ -113,6 +357,233 @@ const renderCustomers = (customers: AdminDashboardData['customers']) => {
   `
 }
 
+const renderAnalyticsPage = (data: AdminDashboardData, state: AdminState, searchTerm: string) => `
+  <section class="admin-page-header">
+    <input
+      id="admin-search-input"
+      class="admin-search-input"
+      type="search"
+      value="${escapeHtml(searchTerm)}"
+      placeholder="Search..."
+    />
+    <div class="admin-page-label">Analytics</div>
+  </section>
+
+  <section class="admin-heading-block">
+    <h1>Analytics</h1>
+  </section>
+
+  ${renderNotice(state.notice)}
+
+  <section class="admin-stats-grid">
+    <article class="admin-stat-card">
+      <h2>Total Revenue</h2>
+      <strong>${formatCurrency(data.analytics.totalRevenue)}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Paid Revenue</h2>
+      <strong>${formatCurrency(data.analytics.paidRevenue)}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Average Order Value</h2>
+      <strong>${formatCurrency(data.analytics.averageOrderValue)}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Order Conversion</h2>
+      <strong>${data.analytics.orderConversionRate}%</strong>
+    </article>
+  </section>
+
+  <section class="admin-panel admin-panel-wide">
+    <h2>Top Selling Products</h2>
+    <p class="admin-empty-copy admin-panel-copy">
+      Track your best performing shirts by units sold and revenue contribution.
+    </p>
+
+    <div class="admin-analytics-table">
+      <div class="admin-analytics-table-head admin-analytics-products-head">
+        <span>Product</span>
+        <span>Units Sold</span>
+        <span>Revenue</span>
+        <span>Performance</span>
+      </div>
+      ${
+        data.analytics.topSellingProducts.length
+          ? data.analytics.topSellingProducts
+              .map(
+                (product) => `
+                  <div class="admin-analytics-row admin-analytics-products-row">
+                    <div class="admin-analytics-cell">
+                      <strong>${escapeHtml(product.title)}</strong>
+                    </div>
+                    <div class="admin-analytics-cell">${product.unitsSold}</div>
+                    <div class="admin-analytics-cell">${formatCurrency(product.revenue)}</div>
+                    <div class="admin-analytics-cell">
+                      <div class="admin-performance-cell">
+                        <div class="admin-performance-track">
+                          <span class="admin-performance-fill" style="width: ${product.performancePercent}%"></span>
+                        </div>
+                        <strong>${product.performancePercent}%</strong>
+                      </div>
+                    </div>
+                  </div>
+                `,
+              )
+              .join('')
+          : '<div class="admin-analytics-empty-row">No sales data available yet.</div>'
+      }
+    </div>
+  </section>
+
+  <section class="admin-panel admin-panel-wide">
+    <h2>Recent Revenue Activity</h2>
+    <p class="admin-empty-copy admin-panel-copy">
+      Latest orders and payment status so you can monitor daily cashflow at a glance.
+    </p>
+
+    <div class="admin-analytics-table">
+      <div class="admin-analytics-table-head admin-analytics-revenue-head">
+        <span>Order</span>
+        <span>Customer</span>
+        <span>Total</span>
+        <span>Status</span>
+        <span>Date</span>
+      </div>
+      ${
+        data.analytics.recentRevenueActivity.length
+          ? data.analytics.recentRevenueActivity
+              .map(
+                (order) => `
+                  <div class="admin-analytics-row admin-analytics-revenue-row">
+                    <div class="admin-analytics-cell">
+                      <strong>${escapeHtml(order.id)}</strong>
+                    </div>
+                    <div class="admin-analytics-cell">${escapeHtml(order.email)}</div>
+                    <div class="admin-analytics-cell">${formatCurrency(order.total)}</div>
+                    <div class="admin-analytics-cell">
+                      <span class="admin-pill ${order.paymentStatus === 'paid' ? 'admin-pill-admin' : 'admin-pill-pending'}">
+                        ${order.paymentStatus === 'paid' ? 'Paid' : 'Awaiting Approval'}
+                      </span>
+                    </div>
+                    <div class="admin-analytics-cell">${escapeHtml(formatJoinedDate(order.createdAt))}</div>
+                  </div>
+                `,
+              )
+              .join('')
+          : '<div class="admin-analytics-empty-row">No orders available yet.</div>'
+      }
+    </div>
+  </section>
+`
+
+const renderSettingsPage = (data: AdminDashboardData, state: AdminState, searchTerm: string) => `
+  <section class="admin-page-header">
+    <input
+      id="admin-search-input"
+      class="admin-search-input"
+      type="search"
+      value="${escapeHtml(searchTerm)}"
+      placeholder="Search..."
+    />
+    <div class="admin-page-label">Settings</div>
+  </section>
+
+  <section class="admin-heading-block">
+    <h1>Settings</h1>
+  </section>
+
+  ${renderNotice(state.notice)}
+
+  <section class="admin-stats-grid">
+    <article class="admin-stat-card">
+      <h2>Admin Accounts</h2>
+      <strong>${data.customerStats.admins}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Pending Orders</h2>
+      <strong>${data.totalPendingApprovalOrders}</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Tax Rate</h2>
+      <strong>${escapeHtml(state.settingsForm.taxRate)}%</strong>
+    </article>
+    <article class="admin-stat-card">
+      <h2>Currency</h2>
+      <strong>${escapeHtml(state.settingsForm.currency)}</strong>
+    </article>
+  </section>
+
+  <section class="admin-panel admin-panel-wide">
+    <h2>Store Configuration</h2>
+    <p class="admin-empty-copy admin-panel-copy">
+      Update core storefront details, checkout defaults, and operational toggles used by administrators.
+    </p>
+
+    <form id="admin-settings-form" class="admin-settings-form">
+      <div class="admin-settings-grid">
+        <label class="field">
+          <span>Store Name</span>
+          <input id="admin-settings-store-name" type="text" value="${escapeHtml(state.settingsForm.storeName)}" />
+        </label>
+        <label class="field">
+          <span>Support Email</span>
+          <input id="admin-settings-support-email" type="email" value="${escapeHtml(state.settingsForm.supportEmail)}" />
+        </label>
+        <label class="field">
+          <span>Support Phone</span>
+          <input id="admin-settings-support-phone" type="text" value="${escapeHtml(state.settingsForm.supportPhone)}" />
+        </label>
+        <label class="field">
+          <span>Currency</span>
+          <span class="shop-select-wrap">
+            <select id="admin-settings-currency" class="shop-select">
+              <option value="ZAR" ${state.settingsForm.currency === 'ZAR' ? 'selected' : ''}>ZAR</option>
+              <option value="USD" ${state.settingsForm.currency === 'USD' ? 'selected' : ''}>USD</option>
+              <option value="EUR" ${state.settingsForm.currency === 'EUR' ? 'selected' : ''}>EUR</option>
+              <option value="GBP" ${state.settingsForm.currency === 'GBP' ? 'selected' : ''}>GBP</option>
+            </select>
+          </span>
+        </label>
+        <label class="field">
+          <span>Tax Rate (%)</span>
+          <input id="admin-settings-tax-rate" type="number" min="0" step="0.1" value="${escapeHtml(state.settingsForm.taxRate)}" />
+        </label>
+        <label class="field">
+          <span>Flat Shipping Rate</span>
+          <input id="admin-settings-flat-shipping-rate" type="number" min="0" step="1" value="${escapeHtml(state.settingsForm.flatShippingRate)}" />
+        </label>
+        <label class="field field-full">
+          <span>Low Stock Threshold</span>
+          <input id="admin-settings-low-stock-threshold" type="number" min="1" step="1" value="${escapeHtml(state.settingsForm.lowStockThreshold)}" />
+        </label>
+      </div>
+
+      <div class="admin-settings-checkbox-grid">
+        <label class="admin-checkbox">
+          <input id="admin-settings-send-admin-notifications" type="checkbox" ${state.settingsForm.sendAdminNotifications ? 'checked' : ''} />
+          <span>Send admin notifications for new orders</span>
+        </label>
+        <label class="admin-checkbox">
+          <input id="admin-settings-maintenance-mode" type="checkbox" ${state.settingsForm.maintenanceMode ? 'checked' : ''} />
+          <span>Maintenance mode (temporarily pause storefront activity)</span>
+        </label>
+        <label class="admin-checkbox">
+          <input id="admin-settings-require-double-opt-in" type="checkbox" ${state.settingsForm.requireNewsletterDoubleOptIn ? 'checked' : ''} />
+          <span>Require newsletter double opt-in</span>
+        </label>
+      </div>
+
+      <div class="admin-settings-footer">
+        <p class="admin-settings-meta">Last updated: ${escapeHtml(formatJoinedDate(state.settingsForm.lastUpdatedAt))}</p>
+        <div class="admin-settings-actions">
+          <button class="primary-button admin-settings-save" type="submit">Save Settings</button>
+          <button id="admin-reset-settings" class="cart-secondary-button admin-settings-reset" type="button">Reset Defaults</button>
+        </div>
+      </div>
+    </form>
+  </section>
+`
+
 const renderCategories = (categories: AdminDashboardData['categories']) => {
   if (!categories.length) {
     return '<p class="admin-empty-copy">No categories found.</p>'
@@ -140,7 +611,7 @@ const renderProductRow = (product: ShopItem) => `
       <div class="admin-product-thumb ${product.imageTheme}" ${getProductMediaAttributes(product)}></div>
       <div class="admin-product-copy">
         <strong>${escapeHtml(product.name)}</strong>
-        <span>${escapeHtml(product.clubOrNation)} · ${escapeHtml(product.variant)}</span>
+        <span>${escapeHtml(product.clubOrNation)} &middot; ${escapeHtml(product.variant)}</span>
       </div>
     </div>
     <div class="admin-product-cell">${escapeHtml(product.seasonLabel.replace(` ${product.variant}`, ''))}</div>
@@ -208,6 +679,31 @@ const renderProductsPage = (
         <label class="field">
           <span>Image URL</span>
           <input id="admin-image-url" type="url" value="${escapeHtml(form.imageUrl)}" placeholder="https://..." />
+        </label>
+        <label class="field">
+          <span>League</span>
+          <input id="admin-league" type="text" value="${escapeHtml(form.league)}" placeholder="Premier League / La Liga / National Team Archive" />
+        </label>
+        <label class="field">
+          <span>Condition</span>
+          <span class="shop-select-wrap">
+            <select id="admin-condition" class="shop-select">
+              <option value="Excellent" ${form.condition === 'Excellent' ? 'selected' : ''}>Excellent</option>
+              <option value="Very Good" ${form.condition === 'Very Good' ? 'selected' : ''}>Very Good</option>
+              <option value="Good" ${form.condition === 'Good' ? 'selected' : ''}>Good</option>
+              <option value="Fair" ${form.condition === 'Fair' ? 'selected' : ''}>Fair</option>
+            </select>
+          </span>
+        </label>
+        <label class="field">
+          <span>Authenticity</span>
+          <span class="shop-select-wrap">
+            <select id="admin-authenticity" class="shop-select">
+              <option value="Verified" ${form.authenticity === 'Verified' ? 'selected' : ''}>Verified</option>
+              <option value="Authenticated" ${form.authenticity === 'Authenticated' ? 'selected' : ''}>Authenticated</option>
+              <option value="Store Verified" ${form.authenticity === 'Store Verified' ? 'selected' : ''}>Store Verified</option>
+            </select>
+          </span>
         </label>
       </div>
 
@@ -355,11 +851,11 @@ export const renderAdminPage = ({ data, searchTerm, state }: RenderAdminPageOpti
           <nav class="admin-sidebar-nav">
             ${renderSidebarLink('admin-nav-dashboard', 'Dashboard', activeView === 'dashboard')}
             ${renderSidebarLink('admin-nav-products', 'Products', activeView === 'products')}
-            ${renderSidebarLink('admin-nav-orders', 'Orders', false)}
-            ${renderSidebarLink('admin-nav-customers', 'Customers', false)}
+            ${renderSidebarLink('admin-nav-orders', 'Orders', activeView === 'orders')}
+            ${renderSidebarLink('admin-nav-customers', 'Customers', activeView === 'customers')}
             ${renderSidebarLink('admin-nav-categories', 'Categories', false)}
-            ${renderSidebarLink('admin-nav-analytics', 'Analytics', false)}
-            ${renderSidebarLink('admin-nav-settings', 'Settings', false)}
+            ${renderSidebarLink('admin-nav-analytics', 'Analytics', activeView === 'analytics')}
+            ${renderSidebarLink('admin-nav-settings', 'Settings', activeView === 'settings')}
           </nav>
 
           <div class="admin-sidebar-footer">
@@ -373,7 +869,15 @@ export const renderAdminPage = ({ data, searchTerm, state }: RenderAdminPageOpti
           ${
             activeView === 'products'
               ? renderProductsPage(data.filteredProducts, state.form, state.editingProductId, state.notice, searchTerm)
-              : renderDashboardPage(data, searchTerm)
+              : activeView === 'orders'
+                ? renderOrdersPage(data.filteredOrders, state, data, searchTerm)
+                : activeView === 'customers'
+                  ? renderCustomersPage(data.filteredCustomers, state, data, searchTerm)
+                  : activeView === 'analytics'
+                    ? renderAnalyticsPage(data, state, searchTerm)
+                    : activeView === 'settings'
+                      ? renderSettingsPage(data, state, searchTerm)
+                      : renderDashboardPage(data, searchTerm)
           }
         </main>
       </div>

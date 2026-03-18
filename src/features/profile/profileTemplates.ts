@@ -88,6 +88,20 @@ const formatOrderDate = (isoDate: string) => {
 const formatOrderStatus = (status: OrderRecord['status']) =>
   status.charAt(0).toUpperCase() + status.slice(1)
 
+const getProfileOrderBadge = (order: OrderRecord) => {
+  if (order.paymentStatus !== 'paid') {
+    return {
+      label: 'Awaiting Payment',
+      tone: 'awaiting-payment',
+    }
+  }
+
+  return {
+    label: formatOrderStatus(order.status),
+    tone: order.status,
+  }
+}
+
 const renderOrderHistory = (orders: OrderRecord[]) => {
   if (!orders.length) {
     return `
@@ -101,16 +115,18 @@ const renderOrderHistory = (orders: OrderRecord[]) => {
   return `
     <div class="order-history-list">
       ${orders
-        .map(
-          (order) => `
+        .map((order) => {
+          const badge = getProfileOrderBadge(order)
+
+          return `
             <article class="order-history-item">
               <div class="order-history-top">
                 <div>
                   <h4>Order ${escapeHtml(order.id)}</h4>
                   <p>Placed on ${escapeHtml(formatOrderDate(order.createdAt))}</p>
                 </div>
-                <span class="order-status order-status-${order.status}">
-                  ${escapeHtml(formatOrderStatus(order.status))}
+                <span class="order-status order-status-${badge.tone}">
+                  ${escapeHtml(badge.label)}
                 </span>
               </div>
               <div class="order-history-meta">
@@ -123,15 +139,15 @@ const renderOrderHistory = (orders: OrderRecord[]) => {
                     (item) => `
                       <div class="order-history-product">
                         <span>${escapeHtml(item.product.name)} ${escapeHtml(item.product.seasonLabel)}</span>
-                        <span>Size ${item.size} · Qty ${item.quantity}</span>
+                        <span>Size ${item.size} &middot; Qty ${item.quantity}</span>
                       </div>
                     `,
                   )
                   .join('')}
               </div>
             </article>
-          `,
-        )
+          `
+        })
         .join('')}
     </div>
   `

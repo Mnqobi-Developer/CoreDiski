@@ -12,7 +12,9 @@ type RenderCartPageOptions = {
   }
   lines: CartLineItem[]
   notice: Notice | null
+  shipping: number
   subtotal: number
+  total: number
 }
 
 const formatCurrency = (value: number) => `R ${value}`
@@ -54,7 +56,14 @@ const renderCartItem = (line: CartLineItem) => `
   </article>
 `
 
-export const renderCartPage = ({ actionButton, lines, notice, subtotal }: RenderCartPageOptions) => {
+export const renderCartPage = ({
+  actionButton,
+  lines,
+  notice,
+  shipping,
+  subtotal,
+  total,
+}: RenderCartPageOptions) => {
   const mainContent = `
     <section class="cart-page">
       <div class="cart-breadcrumb">Home / Shopping Cart</div>
@@ -64,7 +73,7 @@ export const renderCartPage = ({ actionButton, lines, notice, subtotal }: Render
 
       ${renderNotice(notice)}
 
-      <section class="cart-card">
+      <section class="cart-card ${lines.length ? '' : 'cart-card-empty'}">
         ${
           lines.length
             ? `
@@ -80,11 +89,11 @@ export const renderCartPage = ({ actionButton, lines, notice, subtotal }: Render
                   </div>
                   <div class="cart-summary-row">
                     <span>Shipping</span>
-                    <strong>Free</strong>
+                    <strong>${formatCurrency(shipping)}</strong>
                   </div>
                   <div class="cart-summary-row cart-summary-total">
                     <span>Total</span>
-                    <strong>${formatCurrency(subtotal)}</strong>
+                    <strong>${formatCurrency(total)}</strong>
                   </div>
 
                   <button id="cart-checkout" class="primary-button cart-primary-button" type="button">

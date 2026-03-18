@@ -1,3 +1,4 @@
+import { SOUTH_AFRICA_NATIONWIDE_SHIPPING_FEE } from '../../config/shipping.ts'
 import { renderStorefrontShell } from '../../shared/templates/renderStorefrontShell.ts'
 import { escapeHtml } from '../../shared/utils/escapeHtml.ts'
 import { shopCatalog } from '../shop/shopCatalog.ts'
@@ -51,12 +52,6 @@ export const renderProductPage = ({
       <div class="product-layout">
         <div class="product-gallery">
           <div class="product-main-image ${product.imageTheme}" ${getProductMediaAttributes(product)}></div>
-          <div class="product-thumbnails">
-            <button class="product-thumb ${product.imageTheme}" ${getProductMediaAttributes(product)} type="button" aria-label="View image 1"></button>
-            <button class="product-thumb ${product.imageTheme}" ${getProductMediaAttributes(product)} type="button" aria-label="View image 2"></button>
-            <button class="product-thumb ${product.imageTheme}" ${getProductMediaAttributes(product)} type="button" aria-label="View image 3"></button>
-            <button class="product-thumb ${product.imageTheme}" ${getProductMediaAttributes(product)} type="button" aria-label="View image 4"></button>
-          </div>
         </div>
 
         <section class="product-summary">
@@ -73,7 +68,9 @@ export const renderProductPage = ({
           <div class="product-divider"></div>
 
           <div class="product-price">R ${product.price}</div>
-          <p class="product-shipping">${product.freeShipping ? 'Free worldwide shipping' : 'Shipping calculated at checkout'}</p>
+          <p class="product-shipping">
+            Nationwide shipping in South Africa: R${SOUTH_AFRICA_NATIONWIDE_SHIPPING_FEE}
+          </p>
 
           <div class="product-sizes">
             <span>Size:</span>
