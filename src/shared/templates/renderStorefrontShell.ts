@@ -1,4 +1,4 @@
-import { brandLogoSrc, brandSubtitle, brandTitle, navigationLinks } from '../../config/site.ts'
+import { brandSubtitle, brandTitle, navigationLinks } from '../../config/site.ts'
 import { escapeHtml } from '../utils/escapeHtml.ts'
 
 type StorefrontShellOptions = {
@@ -28,15 +28,28 @@ export const renderStorefrontShell = ({
   return `
     <div class="store-shell">
       <header class="topbar">
-        <div class="brand">
-          <img class="brand-logo" src="${brandLogoSrc}" alt="Core Diski logo" />
+        <button id="header-home-brand" class="brand brand-button" type="button">
+          <img class="brand-logo" src="/logo Core Diski.png" alt="Core Diski logo" />
           <div class="brand-copy">
             <p class="brand-title">${brandTitle}</p>
             <p class="brand-subtitle">${brandSubtitle}</p>
           </div>
-        </div>
+        </button>
 
-        <nav class="topnav" aria-label="Primary">
+        <button
+          id="header-menu-toggle"
+          class="menu-toggle topnav-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="header-primary-nav"
+          aria-label="Toggle navigation menu"
+        >
+          <span class="menu-toggle-line"></span>
+          <span class="menu-toggle-line"></span>
+          <span class="menu-toggle-line"></span>
+        </button>
+
+        <nav id="header-primary-nav" class="topnav" aria-label="Primary" aria-hidden="false">
           ${navigationMarkup}
           <button
             id="${escapeHtml(actionButton.id)}"

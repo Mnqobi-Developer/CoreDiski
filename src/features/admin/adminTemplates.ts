@@ -1,4 +1,3 @@
-import { brandLogoSrc } from '../../config/site.ts'
 import { escapeHtml } from '../../shared/utils/escapeHtml.ts'
 import { getProductMediaAttributes } from '../shop/productMedia.ts'
 import type { ShopItem } from '../shop/shopTypes.ts'
@@ -832,14 +831,27 @@ export const renderAdminPage = ({ data, searchTerm, state }: RenderAdminPageOpti
     <div class="admin-shell">
       <header class="admin-topbar">
         <div class="admin-brand">
-          <img class="admin-brand-logo" src="${brandLogoSrc}" alt="Core Diski logo" />
+          <img class="admin-brand-logo" src="/logo Core Diski.png" alt="Core Diski logo" />
           <div>
             <p class="admin-brand-title">CORE DISKI</p>
             <p class="admin-brand-subtitle">Admin Portal</p>
           </div>
         </div>
 
-        <nav class="admin-topnav" aria-label="Admin Navigation">
+        <button
+          id="admin-mobile-menu-toggle"
+          class="menu-toggle admin-menu-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="admin-primary-nav"
+          aria-label="Toggle admin navigation menu"
+        >
+          <span class="menu-toggle-line"></span>
+          <span class="menu-toggle-line"></span>
+          <span class="menu-toggle-line"></span>
+        </button>
+
+        <nav id="admin-primary-nav" class="admin-topnav" aria-label="Admin Navigation" aria-hidden="false">
           <button id="admin-home" class="admin-topnav-button is-active" type="button">Home</button>
           <button id="admin-storefront" class="admin-topnav-button" type="button">Storefront</button>
           <button id="admin-signout" class="admin-topnav-button" type="button">Sign Out</button>

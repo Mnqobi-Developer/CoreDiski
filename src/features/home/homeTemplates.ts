@@ -1,4 +1,4 @@
-import { brandLogoSrc } from '../../config/site.ts'
+import homeAboutArchiveImage from '../../assets/hero.png'
 import { escapeHtml } from '../../shared/utils/escapeHtml.ts'
 import { renderStorefrontShell } from '../../shared/templates/renderStorefrontShell.ts'
 import { getProductMediaAttributes } from '../shop/productMedia.ts'
@@ -66,8 +66,8 @@ const renderFeaturedProductCard = (item: ShopItem) => `
 
 export const renderHomePage = ({ actionButton, featuredProducts }: RenderHomePageOptions) => {
   const mainContent = `
-    <section class="hero-home">
-      <img class="hero-home-logo" src="${brandLogoSrc}" alt="Core Diski crest" />
+    <section id="home-hero-section" class="hero-home">
+      <img class="hero-home-logo" src="/logo Core Diski.png" alt="Core Diski crest" />
       <div class="hero-home-copy">
         <h1>Authentic Football Shirts</h1>
         <p>
@@ -148,6 +148,11 @@ export const renderHomePage = ({ actionButton, featuredProducts }: RenderHomePag
 
       <aside class="home-about-highlight" aria-label="Historic Shirt Archive">
         <div class="home-about-highlight-card">
+          <img
+            class="home-about-highlight-image"
+            src="${homeAboutArchiveImage}"
+            alt="Historic football shirt archive"
+          />
           <strong>Historic Shirt Archive</strong>
         </div>
       </aside>
@@ -156,7 +161,7 @@ export const renderHomePage = ({ actionButton, featuredProducts }: RenderHomePag
     <footer class="home-footer">
       <div class="home-footer-grid">
         <section class="home-footer-brand">
-          <img class="home-footer-logo" src="${brandLogoSrc}" alt="Core Diski crest" />
+          <img class="home-footer-logo" src="/logo Core Diski.png" alt="Core Diski crest" />
           <div>
             <h2>CORE DISKI</h2>
             <p>

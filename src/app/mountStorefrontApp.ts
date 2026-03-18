@@ -7,6 +7,7 @@ import {
   createEmptyAdminProductForm,
   createInitialAdminState,
 } from '../features/admin/adminState.ts'
+import { getStoreSettings, upsertStoreSettings } from '../features/admin/adminSettingsService.ts'
 import { writeAdminSettings } from '../features/admin/adminSettingsStorage.ts'
 import { renderAdminPage } from '../features/admin/adminTemplates.ts'
 import {
@@ -89,6 +90,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
   let currentProductId: string | null = null
   let selectedProductSize: ShirtSize = 'M'
   let adminSearchTerm = ''
+  let shouldScrollToHomeHero = false
 
   const getShellActionButton = () =>
     session
@@ -171,6 +173,17 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
 
     syncPageFromHash()
     render()
+  }
+
+  const openHomeHero = () => {
+    shouldScrollToHomeHero = true
+
+    if (currentPage === 'home') {
+      render()
+      return
+    }
+
+    navigateTo('home')
   }
 
   const syncProfileForm = (profile: ProfileRecord | null) => {
@@ -372,6 +385,39 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
 
     adminProfiles = data
     upsertAdminProfile(profileState.profile)
+
+    if (currentPage === 'admin') {
+      render()
+    }
+  }
+
+  const loadAdminSettingsFromDatabase = async () => {
+    if (!isSupabaseConfigured) {
+      return
+    }
+
+    const { data, error } = await getStoreSettings()
+
+    if (error) {
+      adminState.notice = {
+        tone: 'error',
+        message:
+          error.message ||
+          'Unable to load store settings from Supabase. Run the store settings SQL script if this persists.',
+      }
+
+      if (currentPage === 'admin') {
+        render()
+      }
+      return
+    }
+
+    if (!data) {
+      return
+    }
+
+    adminState.settingsForm = data
+    writeAdminSettings(data)
 
     if (currentPage === 'admin') {
       render()
@@ -632,6 +678,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
 
     if (profileState.profile?.id === nextSession.user.id) {
       if (profileState.profile.role === 'admin') {
+        await loadAdminSettingsFromDatabase()
         await loadAdminProfiles()
       }
       await loadOrdersFromDatabase(nextSession)
@@ -645,6 +692,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     await loadProfile(nextSession)
 
     if (profileState.profile?.role === 'admin') {
+      await loadAdminSettingsFromDatabase()
       await loadAdminProfiles()
     }
 
@@ -920,6 +968,42 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
       }
 
       void handleSignIn()
+    })
+  }
+
+  const bindStorefrontShellUi = () => {
+    const storeShell = appRoot.querySelector<HTMLElement>('.store-shell')
+    const menuToggle = appRoot.querySelector<HTMLButtonElement>('#header-menu-toggle')
+    const primaryNav = appRoot.querySelector<HTMLElement>('#header-primary-nav')
+    const dismissTargets = appRoot.querySelectorAll<HTMLElement>(
+      '#header-primary-nav .nav-link, #header-primary-nav .nav-auth',
+    )
+    const isMobileViewport = () => window.matchMedia('(max-width: 900px)').matches
+
+    const syncMenuState = (isOpen: boolean) => {
+      if (!isMobileViewport()) {
+        storeShell?.classList.remove('is-nav-open')
+        menuToggle?.setAttribute('aria-expanded', 'false')
+        primaryNav?.setAttribute('aria-hidden', 'false')
+        return
+      }
+
+      storeShell?.classList.toggle('is-nav-open', isOpen)
+      menuToggle?.setAttribute('aria-expanded', String(isOpen))
+      primaryNav?.setAttribute('aria-hidden', String(!isOpen))
+    }
+
+    syncMenuState(false)
+
+    menuToggle?.addEventListener('click', () => {
+      const nextIsOpen = !storeShell?.classList.contains('is-nav-open')
+      syncMenuState(Boolean(nextIsOpen))
+    })
+
+    dismissTargets.forEach((target) => {
+      target.addEventListener('click', () => {
+        syncMenuState(false)
+      })
     })
   }
 
@@ -1894,7 +1978,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
       ).checked
     })
 
-    settingsForm?.addEventListener('submit', (event) => {
+    settingsForm?.addEventListener('submit', async (event) => {
       event.preventDefault()
 
       const storeName = adminState.settingsForm.storeName.trim()
@@ -1913,7 +1997,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         return
       }
 
-      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(supportEmail)) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(supportEmail)) {
         adminState.notice = {
           tone: 'error',
           message: 'Enter a valid support email before saving settings.',
@@ -1969,6 +2053,21 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         taxRate: `${taxRate}`,
       }
 
+      if (isSupabaseConfigured && session) {
+        const { data, error } = await upsertStoreSettings(adminState.settingsForm, session.user.id)
+
+        if (error || !data) {
+          adminState.notice = {
+            tone: 'error',
+            message: error?.message ?? 'Unable to save store settings to Supabase right now.',
+          }
+          render()
+          return
+        }
+
+        adminState.settingsForm = data
+      }
+
       writeAdminSettings(adminState.settingsForm)
       adminState.activeView = 'settings'
       adminState.notice = {
@@ -1978,8 +2077,24 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
       render()
     })
 
-    resetSettingsButton?.addEventListener('click', () => {
+    resetSettingsButton?.addEventListener('click', async () => {
       adminState.settingsForm = createDefaultAdminSettingsForm()
+
+      if (isSupabaseConfigured && session) {
+        const { data, error } = await upsertStoreSettings(adminState.settingsForm, session.user.id)
+
+        if (error || !data) {
+          adminState.notice = {
+            tone: 'error',
+            message: error?.message ?? 'Unable to reset store settings in Supabase right now.',
+          }
+          render()
+          return
+        }
+
+        adminState.settingsForm = data
+      }
+
       writeAdminSettings(adminState.settingsForm)
       adminState.activeView = 'settings'
       adminState.notice = {
@@ -2418,33 +2533,84 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     })
   }
 
+  const bindAdminShellUi = () => {
+    const adminShell = appRoot.querySelector<HTMLElement>('.admin-shell')
+    const menuToggle = appRoot.querySelector<HTMLButtonElement>('#admin-mobile-menu-toggle')
+    const topNav = appRoot.querySelector<HTMLElement>('#admin-primary-nav')
+    const sidebar = appRoot.querySelector<HTMLElement>('.admin-sidebar')
+    const dismissTargets = appRoot.querySelectorAll<HTMLElement>(
+      '#admin-primary-nav .admin-topnav-button, .admin-sidebar .admin-sidebar-link, .admin-sidebar .admin-sidebar-utility',
+    )
+    const isMobileViewport = () => window.matchMedia('(max-width: 900px)').matches
+
+    const syncMenuState = (isOpen: boolean) => {
+      if (!isMobileViewport()) {
+        adminShell?.classList.remove('is-mobile-nav-open')
+        menuToggle?.setAttribute('aria-expanded', 'false')
+        topNav?.setAttribute('aria-hidden', 'false')
+        sidebar?.setAttribute('aria-hidden', 'false')
+        return
+      }
+
+      adminShell?.classList.toggle('is-mobile-nav-open', isOpen)
+      menuToggle?.setAttribute('aria-expanded', String(isOpen))
+      topNav?.setAttribute('aria-hidden', String(!isOpen))
+      sidebar?.setAttribute('aria-hidden', String(!isOpen))
+    }
+
+    syncMenuState(false)
+
+    menuToggle?.addEventListener('click', () => {
+      const nextIsOpen = !adminShell?.classList.contains('is-mobile-nav-open')
+      syncMenuState(Boolean(nextIsOpen))
+    })
+
+    dismissTargets.forEach((target) => {
+      target.addEventListener('click', () => {
+        syncMenuState(false)
+      })
+    })
+  }
+
   const bindUi = () => {
+    const homeBrandButton = appRoot.querySelector<HTMLButtonElement>('#header-home-brand')
+
+    homeBrandButton?.addEventListener('click', () => {
+      openHomeHero()
+    })
+
     if (currentPage === 'admin' && session && isAdminUser()) {
+      bindAdminShellUi()
       bindAdminUi()
       return
     }
 
     if (currentPage === 'admin' && session && !isAdminUser()) {
+      bindStorefrontShellUi()
       bindProfileUi()
       return
     }
 
     if (currentPage === 'profile' && session) {
+      bindStorefrontShellUi()
       bindProfileUi()
       return
     }
 
     if (currentPage === 'cart' && session) {
+      bindStorefrontShellUi()
       bindCartUi()
       return
     }
 
     if (currentPage === 'checkout' && session) {
+      bindStorefrontShellUi()
       bindCheckoutUi()
       return
     }
 
     if (currentPage === 'wishlist' && session) {
+      bindStorefrontShellUi()
       bindWishlistUi()
       return
     }
@@ -2459,20 +2625,34 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
           currentPage === 'wishlist'
         ))
     ) {
+      bindStorefrontShellUi()
       bindAuthUi()
       return
     }
 
     if (currentPage === 'shop') {
+      bindStorefrontShellUi()
       bindShopUi()
       return
     }
 
     if (currentPage === 'product') {
+      bindStorefrontShellUi()
       bindProductUi()
       return
     }
 
+    if (currentPage === 'home' && shouldScrollToHomeHero) {
+      requestAnimationFrame(() => {
+        appRoot.querySelector<HTMLElement>('#home-hero-section')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        })
+      })
+      shouldScrollToHomeHero = false
+    }
+
+    bindStorefrontShellUi()
     bindHomeUi()
   }
 

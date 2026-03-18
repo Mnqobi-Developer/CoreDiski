@@ -16,7 +16,7 @@ export const createDefaultAdminSettingsForm = (): AdminSettingsForm => ({
   requireNewsletterDoubleOptIn: false,
   sendAdminNotifications: true,
   storeName: 'Core Diski',
-  supportEmail: 'mnqobintereke2000@gmail.com',
+  supportEmail: 'corediski@gmail.com',
   supportPhone: '+27 71 000 0000',
   taxRate: '0',
 })
