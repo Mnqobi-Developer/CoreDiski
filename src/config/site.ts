@@ -9,4 +9,6 @@ export const navigationLinks = [
   { href: '#wishlist', label: 'Wishlist' },
 ]
 
+export const yocoPaymentPageUrl = 'https://pay.yoco.com/corediski'
+
 export const getEmailRedirectTo = () => window.location.origin

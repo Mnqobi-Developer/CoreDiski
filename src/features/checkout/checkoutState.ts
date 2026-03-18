@@ -7,4 +7,5 @@ export const createInitialCheckoutState = (): CheckoutState => ({
     shippingAddress: '',
   },
   notice: null,
+  paymentPageOpened: false,
 })

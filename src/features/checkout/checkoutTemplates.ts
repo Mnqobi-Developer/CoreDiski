@@ -1,3 +1,4 @@
+import { yocoPaymentPageUrl } from '../../config/site.ts'
 import { renderStorefrontShell } from '../../shared/templates/renderStorefrontShell.ts'
 import { escapeHtml } from '../../shared/utils/escapeHtml.ts'
 import { getProductMediaAttributes } from '../shop/productMedia.ts'
@@ -23,6 +24,7 @@ export const renderCheckoutPage = ({
   form,
   lines,
   notice,
+  paymentPageOpened,
   shipping,
   subtotal,
   total,
@@ -71,10 +73,22 @@ export const renderCheckoutPage = ({
             <h2>Payment Information</h2>
             <div class="checkout-payment-pill">Yoco Secure Checkout</div>
             <p class="checkout-payment-copy">
-              Yoco is the only payment method available. You will be redirected to
-              <strong> pay.yoco.com/corediski </strong>
-              to complete payment securely.
+              Yoco is the only payment method available. Click below to open
+              <strong> ${escapeHtml(yocoPaymentPageUrl.replace('https://', ''))} </strong>
+              and complete payment securely.
             </p>
+            <p class="checkout-payment-copy">
+              ${
+                paymentPageOpened
+                  ? 'After you complete payment on Yoco, return here and confirm payment submitted so your order can move to admin approval.'
+                  : 'You will be sent to Yoco first. Your order will only be submitted for admin approval after you confirm that payment has been made.'
+              }
+            </p>
+            <div class="checkout-payment-alert" role="note" aria-label="Important payment reference instruction">
+              IMPORTANT: USE YOUR
+              <strong> FULL NAME AND EMAIL ADDRESS </strong>
+              AS THE PAYMENT REFERENCE ON YOCO SO WE CAN MATCH YOUR PAYMENT TO YOUR ORDER QUICKLY.
+            </div>
 
             <form id="checkout-form" class="checkout-form">
               <label class="field field-full">
@@ -105,7 +119,9 @@ export const renderCheckoutPage = ({
                 >${escapeHtml(form.billingSameAsShipping ? form.shippingAddress : form.billingAddress)}</textarea>
               </label>
 
-              <button class="primary-button checkout-submit" type="submit">Continue to Yoco</button>
+              <button class="primary-button checkout-submit" type="submit">
+                ${paymentPageOpened ? "I've Completed Payment" : 'Continue to Yoco'}
+              </button>
             </form>
           </section>
         </div>

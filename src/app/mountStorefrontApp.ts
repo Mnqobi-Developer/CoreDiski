@@ -1,6 +1,6 @@
 import type { Session } from '@supabase/supabase-js'
 import { isSupabaseConfigured } from '../lib/supabase.ts'
-import { getEmailRedirectTo } from '../config/site.ts'
+import { getEmailRedirectTo, yocoPaymentPageUrl } from '../config/site.ts'
 import { getAdminDashboardData } from '../features/admin/adminSelectors.ts'
 import {
   createDefaultAdminSettingsForm,
@@ -320,6 +320,12 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
   const clearCart = () => {
     cartState.items = []
     persistCart()
+    resetCheckoutProgress()
+  }
+
+  const resetCheckoutProgress = () => {
+    checkoutState.notice = null
+    checkoutState.paymentPageOpened = false
   }
 
   const resetAdminProductForm = () => {
@@ -575,6 +581,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         form: checkoutState.form,
         lines: cartLines,
         notice: checkoutState.notice,
+        paymentPageOpened: checkoutState.paymentPageOpened,
         shipping: cartShipping,
         subtotal: cartSubtotal,
         total: cartTotal,
@@ -717,6 +724,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
     adminState.notice = null
     adminProfiles = []
     orderState.items = readOrders()
+    resetCheckoutProgress()
     resetAdminProductForm()
     resetProfileState()
     currentPage = notice ? 'auth' : 'home'
@@ -1592,7 +1600,7 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         return
       }
 
-      checkoutState.notice = null
+      resetCheckoutProgress()
       navigateTo('checkout')
     })
   }
@@ -1676,6 +1684,17 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
         return
       }
 
+      if (!checkoutState.paymentPageOpened) {
+        checkoutState.paymentPageOpened = true
+        setCheckoutNotice({
+          tone: 'info',
+          message:
+            'Yoco has been opened in a new tab. Complete payment there, then return here and click "I\'ve Completed Payment" to submit your order for admin approval.',
+        })
+        window.open(yocoPaymentPageUrl, '_blank', 'noopener,noreferrer')
+        return
+      }
+
       const order: OrderRecord = {
         createdAt: new Date().toISOString(),
         email: session.user.email ?? profileState.profile?.email ?? 'No email address',
@@ -1708,10 +1727,10 @@ export const mountStorefrontApp = async (appRoot: HTMLDivElement) => {
       persistOrders()
       syncProfileOrders(session.user.id)
       clearCart()
-      checkoutState.notice = null
+      resetCheckoutProgress()
       profileState.notice = {
         tone: 'info',
-        message: `Order ${persistedOrder.id} is awaiting payment approval. It will only move into processing once an admin confirms payment.`,
+        message: `Order ${persistedOrder.id} is pending approval. Your payment has been submitted and the order will move into processing once an admin confirms it.`,
       }
       navigateTo('profile')
     })

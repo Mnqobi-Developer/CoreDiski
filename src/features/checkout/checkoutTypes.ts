@@ -10,6 +10,7 @@ export type CheckoutFormValues = {
 export type CheckoutState = {
   form: CheckoutFormValues
   notice: Notice | null
+  paymentPageOpened: boolean
 }
 
 export type CheckoutCustomerDetails = {
@@ -27,6 +28,7 @@ export type RenderCheckoutPageOptions = {
   form: CheckoutFormValues
   lines: CartLineItem[]
   notice: Notice | null
+  paymentPageOpened: boolean
   shipping: number
   subtotal: number
   total: number

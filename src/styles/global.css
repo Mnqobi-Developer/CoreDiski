@@ -2715,6 +2715,25 @@ a {
   font-weight: 800;
 }
 
+.checkout-payment-alert {
+  margin-top: 0.9rem;
+  padding: 1rem 1.05rem;
+  border: 2px solid rgba(191, 142, 50, 0.52);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(255, 242, 214, 0.98), rgba(255, 229, 171, 0.94));
+  color: #7a3f00;
+  font-size: 1rem;
+  font-weight: 900;
+  line-height: 1.65;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  box-shadow: 0 14px 30px rgba(140, 100, 22, 0.14);
+}
+
+.checkout-payment-alert strong {
+  color: #5b2400;
+}
+
 .checkout-form {
   display: grid;
   gap: 1rem;
