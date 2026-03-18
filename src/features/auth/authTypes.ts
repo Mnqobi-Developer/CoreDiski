@@ -1,12 +1,5 @@
-import type { Session } from '@supabase/supabase-js'
-
 export type AuthMode = 'sign-in' | 'sign-up'
-export type NoticeTone = 'error' | 'info' | 'success'
-
-export type Notice = {
-  message: string
-  tone: NoticeTone
-}
+import type { Notice } from '../../shared/types/notice.ts'
 
 export type AuthPageState = {
   email: string
@@ -15,6 +8,5 @@ export type AuthPageState = {
   mode: AuthMode
   notice: Notice | null
   password: string
-  session: Session | null
   showPassword: boolean
 }

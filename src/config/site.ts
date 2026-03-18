@@ -3,10 +3,10 @@ export const brandTitle = 'CORE DISKI'
 export const brandSubtitle = 'Authentic Football Shirts'
 
 export const navigationLinks = [
-  { href: '#', label: 'Home' },
-  { href: '#', label: 'Shop' },
-  { href: '#', label: 'Cart' },
-  { href: '#', label: 'Wishlist' },
+  { href: '#home', label: 'Home' },
+  { href: '#shop', label: 'Shop' },
+  { href: '#cart', label: 'Cart' },
+  { href: '#wishlist', label: 'Wishlist' },
 ]
 
 export const getEmailRedirectTo = () => window.location.origin

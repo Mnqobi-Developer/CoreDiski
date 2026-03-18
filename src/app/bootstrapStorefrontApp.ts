@@ -1,5 +1,5 @@
-import { mountAuthPage } from '../features/auth/mountAuthPage.ts'
+import { mountStorefrontApp } from './mountStorefrontApp.ts'
 
 export const bootstrapStorefrontApp = async (appRoot: HTMLDivElement) => {
-  await mountAuthPage(appRoot)
+  await mountStorefrontApp(appRoot)
 }

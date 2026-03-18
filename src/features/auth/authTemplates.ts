@@ -1,7 +1,7 @@
 import { isSupabaseConfigured } from '../../lib/supabase.ts'
-import { brandLogoSrc, brandSubtitle, brandTitle, navigationLinks } from '../../config/site.ts'
+import { renderStorefrontShell } from '../../shared/templates/renderStorefrontShell.ts'
 import { escapeHtml } from '../../shared/utils/escapeHtml.ts'
-import { getConnectionLabel, getDisplayName } from './authSelectors.ts'
+import { getAuthStatusLabel } from './authSelectors.ts'
 import type { AuthPageState } from './authTypes.ts'
 
 const renderNotice = (state: AuthPageState) => {
@@ -32,7 +32,7 @@ const renderEyeIcon = (showPassword: boolean) => {
   `
 }
 
-const renderGuestCard = (state: AuthPageState) => {
+export const renderAuthPage = (state: AuthPageState) => {
   const isSignUp = state.mode === 'sign-up'
   const submitLabel = state.isSubmitting
     ? isSignUp
@@ -42,161 +42,103 @@ const renderGuestCard = (state: AuthPageState) => {
       ? 'Create Account'
       : 'Sign In'
 
-  return `
-    <section class="auth-card">
-      <div class="auth-card-inner">
-        ${isSignUp ? `<p class="auth-chip">${getConnectionLabel(state.session)}</p>` : ''}
-        <h1>${isSignUp ? 'Create Your Account' : 'Welcome Back'}</h1>
-        <p class="auth-copy">
-          ${
-            isSignUp
-              ? 'Register before adding items to cart or purchasing.'
-              : 'Sign in to continue shopping.'
-          }
-        </p>
-        ${renderNotice(state)}
-        <form id="auth-form" class="auth-form">
-          ${
-            isSignUp
-              ? `
-                <label class="field">
-                  <span>Full Name</span>
-                  <input
-                    id="full-name"
-                    name="fullName"
-                    type="text"
-                    autocomplete="name"
-                    value="${escapeHtml(state.fullName)}"
-                    ${state.isSubmitting || !isSupabaseConfigured ? 'disabled' : ''}
-                  />
-                </label>
-              `
-              : ''
-          }
-          <label class="field">
-            <span>Email Address</span>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autocomplete="email"
-              placeholder="you@email.com"
-              value="${escapeHtml(state.email)}"
-              ${state.isSubmitting || !isSupabaseConfigured ? 'disabled' : ''}
-            />
-          </label>
-          <label class="field">
-            <span>Password</span>
-            <div class="password-row">
-              <input
-                id="password"
-                name="password"
-                type="${state.showPassword ? 'text' : 'password'}"
-                autocomplete="${isSignUp ? 'new-password' : 'current-password'}"
-                value="${escapeHtml(state.password)}"
-                ${state.isSubmitting || !isSupabaseConfigured ? 'disabled' : ''}
-              />
-              <button
-                id="toggle-password"
-                class="password-toggle"
-                type="button"
-                aria-label="${state.showPassword ? 'Hide password' : 'Show password'}"
-                ${state.isSubmitting || !isSupabaseConfigured ? 'disabled' : ''}
-              >
-                ${renderEyeIcon(state.showPassword)}
-              </button>
-            </div>
-          </label>
-
-          <button
-            class="primary-button"
-            type="submit"
-            ${state.isSubmitting || !isSupabaseConfigured ? 'disabled' : ''}
-          >
-            ${submitLabel}
-          </button>
-        </form>
-
-        <div class="auth-footer">
-          <span class="footer-spacer"></span>
-          <p class="switch-copy">
+  const authCard = `
+    <div class="page-grid">
+      <section class="auth-card">
+        <div class="auth-card-inner">
+          ${isSignUp ? `<p class="auth-chip">${getAuthStatusLabel()}</p>` : ''}
+          <h1>${isSignUp ? 'Create Your Account' : 'Welcome Back'}</h1>
+          <p class="auth-copy">
             ${
               isSignUp
-                ? `Already have an account? <button id="switch-mode" class="text-link inline-link" type="button">Sign In</button>`
-                : `Don't have an account? <button id="switch-mode" class="text-link inline-link" type="button">Create Account</button>`
+                ? 'Register before adding items to cart or purchasing.'
+                : 'Sign in to continue shopping.'
             }
           </p>
-        </div>
-      </div>
-    </section>
-  `
-}
+          ${renderNotice(state)}
+          <form id="auth-form" class="auth-form">
+            ${
+              isSignUp
+                ? `
+                  <label class="field">
+                    <span>Full Name</span>
+                    <input
+                      id="full-name"
+                      name="fullName"
+                      type="text"
+                      autocomplete="name"
+                      value="${escapeHtml(state.fullName)}"
+                      ${state.isSubmitting || !isSupabaseConfigured ? 'disabled' : ''}
+                    />
+                  </label>
+                `
+                : ''
+            }
+            <label class="field">
+              <span>Email Address</span>
+              <input
+                id="email"
+                name="email"
+                type="email"
+                autocomplete="email"
+                placeholder="you@email.com"
+                value="${escapeHtml(state.email)}"
+                ${state.isSubmitting || !isSupabaseConfigured ? 'disabled' : ''}
+              />
+            </label>
+            <label class="field">
+              <span>Password</span>
+              <div class="password-row">
+                <input
+                  id="password"
+                  name="password"
+                  type="${state.showPassword ? 'text' : 'password'}"
+                  autocomplete="${isSignUp ? 'new-password' : 'current-password'}"
+                  value="${escapeHtml(state.password)}"
+                  ${state.isSubmitting || !isSupabaseConfigured ? 'disabled' : ''}
+                />
+                <button
+                  id="toggle-password"
+                  class="password-toggle"
+                  type="button"
+                  aria-label="${state.showPassword ? 'Hide password' : 'Show password'}"
+                  ${state.isSubmitting || !isSupabaseConfigured ? 'disabled' : ''}
+                >
+                  ${renderEyeIcon(state.showPassword)}
+                </button>
+              </div>
+            </label>
 
-const renderSignedInCard = (state: AuthPageState) => {
-  const email = state.session?.user.email ?? 'Unknown email'
-  const emailConfirmed = Boolean(state.session?.user.email_confirmed_at)
+            <button
+              class="primary-button"
+              type="submit"
+              ${state.isSubmitting || !isSupabaseConfigured ? 'disabled' : ''}
+            >
+              ${submitLabel}
+            </button>
+          </form>
 
-  return `
-    <section class="auth-card">
-      <div class="auth-card-inner">
-        <p class="auth-chip auth-chip-success">${getConnectionLabel(state.session)}</p>
-        <h1>Welcome, ${escapeHtml(getDisplayName(state.session))}</h1>
-        <p class="auth-copy">Your account is ready. You can now continue shopping for authentic football shirts.</p>
-        ${renderNotice(state)}
-        <div class="account-panel">
-          <div class="account-row">
-            <span>Signed in as</span>
-            <strong>${escapeHtml(email)}</strong>
+          <div class="auth-footer">
+            <span class="footer-spacer"></span>
+            <p class="switch-copy">
+              ${
+                isSignUp
+                  ? `Already have an account? <button id="switch-mode" class="text-link inline-link" type="button">Sign In</button>`
+                  : `Don't have an account? <button id="switch-mode" class="text-link inline-link" type="button">Create Account</button>`
+              }
+            </p>
           </div>
-          <div class="account-row">
-            <span>Email status</span>
-            <strong>${emailConfirmed ? 'Verified' : 'Pending verification'}</strong>
-          </div>
         </div>
-        <div class="signed-in-actions">
-          <button id="sign-out" class="primary-button" type="button">Sign Out</button>
-          <button id="sign-out-secondary" class="text-link inline-link" type="button">Use another account</button>
-        </div>
-      </div>
-    </section>
-  `
-}
-
-export const renderAuthPage = (state: AuthPageState) => {
-  const authCard = state.session ? renderSignedInCard(state) : renderGuestCard(state)
-  const authButtonLabel = state.session ? 'Sign Out' : 'Sign In'
-  const navigationMarkup = navigationLinks
-    .map(({ href, label }) => `<a href="${href}" class="nav-link">${escapeHtml(label)}</a>`)
-    .join('')
-
-  return `
-    <div class="store-shell">
-      <header class="topbar">
-        <div class="brand">
-          <img class="brand-logo" src="${brandLogoSrc}" alt="Core Diski logo" />
-          <div class="brand-copy">
-            <p class="brand-title">${brandTitle}</p>
-            <p class="brand-subtitle">${brandSubtitle}</p>
-          </div>
-        </div>
-
-        <nav class="topnav" aria-label="Primary">
-          ${navigationMarkup}
-          <button
-            id="header-auth-action"
-            class="nav-auth ${state.session || state.mode === 'sign-in' ? 'is-active' : ''}"
-            type="button"
-          >
-            ${escapeHtml(authButtonLabel)}
-          </button>
-        </nav>
-      </header>
-
-      <main class="page-content">
-        <div class="page-grid">
-          ${authCard}
-        </div>
-      </main>
+      </section>
     </div>
   `
+
+  return renderStorefrontShell({
+    actionButton: {
+      id: 'header-auth-action',
+      isActive: state.mode === 'sign-in',
+      label: 'Sign In',
+    },
+    mainContent: authCard,
+  })
 }

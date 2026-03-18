@@ -13,6 +13,5 @@ export const createInitialAuthState = (): AuthPageState => ({
         message: 'Supabase environment variables are missing. Add them to .env and restart Vite.',
       },
   password: '',
-  session: null,
   showPassword: false,
 })
