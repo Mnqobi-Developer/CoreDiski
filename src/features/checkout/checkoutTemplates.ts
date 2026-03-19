@@ -138,7 +138,7 @@ export const renderCheckoutPage = ({
                       <div class="checkout-summary-copy">
                         <strong>${escapeHtml(line.product.name)}</strong>
                         <span>${escapeHtml(line.product.seasonLabel)}</span>
-                        <span>Size: ${line.size} · Qty: ${line.quantity}</span>
+                        <span>Size: ${line.size} &middot; Qty: ${line.quantity}</span>
                       </div>
                       <strong class="checkout-summary-price">${formatCurrency(line.subtotal)}</strong>
                     </article>
